@@ -21,9 +21,8 @@ spark = SparkSession.builder \
             "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
     .getOrCreate()
 
-
-
 spark.sparkContext.setLogLevel('ERROR')
+
 # Schema definition for the Kafka JSON payload
 customerFields = [
     StructField("customerId", LongType()),
@@ -48,7 +47,7 @@ schema = StructType([
 
 # Define MinIO paths
 minio_output_path = "s3a://change-data-capture/customers-delta"
-checkpoint_dir = "s3a://change-data-capture/checkpoint/customers_query"
+checkpoint_dir = "s3a://change-data-capture/checkpoint/query1"
 
 def process_batch(batch_df, batch_id):
     if batch_df.isEmpty():
@@ -152,11 +151,19 @@ def process_batch(batch_df, batch_id):
             )
 
             if not update_data.isEmpty():
-                delta_table.alias("target").merge(
-                    update_data.alias("source"),
-                    "target.customerId = source.customerId"
-                ).whenMatchedUpdateAll().execute()
-                
+                # Check if record exists before updating
+                exists = existing_data.join(
+                    update_data.select("customerId"),
+                    "customerId",
+                    "inner"
+                ).count() > 0
+
+                if exists:
+                    delta_table.alias("target").merge(
+                        update_data.alias("source"),
+                        "target.customerId = source.customerId"
+                    ).whenMatchedUpdateAll()
+
         elif operation == "d":  # Delete
             delete_data = parsed_data.filter(col("operation") == "d") \
                 .select(col("before_customerId").alias("customerId"))
