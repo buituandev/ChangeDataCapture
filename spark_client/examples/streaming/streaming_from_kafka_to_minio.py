@@ -1,3 +1,4 @@
+import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import *
@@ -21,9 +22,8 @@ spark = SparkSession.builder \
             "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
     .getOrCreate()
 
-
-
 spark.sparkContext.setLogLevel('ERROR')
+
 # Schema definition for the Kafka JSON payload
 customerFields = [
     StructField("customerId", LongType()),
@@ -48,16 +48,23 @@ schema = StructType([
 
 # Define MinIO paths
 minio_output_path = "s3a://change-data-capture/customers-delta"
-checkpoint_dir = "s3a://change-data-capture/checkpoint/customers_query"
+checkpoint_dir = "s3a://change-data-capture/checkpoint"
+
+def debug(message):
+    if message is None:
+        message = "None"
+    txt_path = "/opt/examples/streaming/debug.txt"
+    if not os.path.exists(txt_path):
+        with open(txt_path, "w") as f:
+            f.write(message + "\n")
+    else:
+        with open(txt_path, "a") as f:
+            f.write(message + "\n")
 
 def process_batch(batch_df, batch_id):
     if batch_df.isEmpty():
         return
-
-    # Parse the incoming batch
     parsed_batch = batch_df.select(from_json(col("value"), schema).alias("data"))
-
-    # Extract operation type and timestamp
     parsed_data = parsed_batch.select(
         col("data.payload.op").alias("operation"),
         col("data.payload.ts_ms").alias("timestamp"),
@@ -80,18 +87,14 @@ def process_batch(batch_df, batch_id):
         col("data.payload.after.customerState").alias("after_customerState"),
         col("data.payload.after.customerZipcode").alias("after_customerZipcode")
     )
-
-    # Process each operation type
     for op_type in parsed_data.select("operation").distinct().collect():
         operation = op_type["operation"]
-
-        # First check if the Delta table exists and create it if it doesn't
+        debug(f"Operation: {operation}")
         try:
-            # Try to read existing data
             existing_data = spark.read.format("delta").load(minio_output_path)
+            debug(existing_data.show())
             delta_table = DeltaTable.forPath(spark, minio_output_path)
         except:
-            # If table doesn't exist and this is an insert operation, create it
             if operation == "c":
                 insert_data = parsed_data.filter(col("operation") == "c") \
                     .select(
@@ -107,10 +110,12 @@ def process_batch(batch_df, batch_id):
                     col("timestamp")
                 )
                 if not insert_data.isEmpty():
+                    debug("Inserting data 1")
+                    debug(insert_data.show())
                     insert_data.write.format("delta").mode("append").save(minio_output_path)
             continue
 
-        if operation == "c":  # Insert
+        if operation == "c":
             insert_data = parsed_data.filter(col("operation") == "c") \
                 .select(
                 col("after_customerId").alias("customerId"),
@@ -126,17 +131,18 @@ def process_batch(batch_df, batch_id):
             )
 
             if not insert_data.isEmpty():
-                # Check if record already exists
-                existing_records = existing_data.join(
-                    insert_data,
-                    on="customerId",
-                    how="inner"
-                )
+                # # Check if record already exists
+                # existing_records = existing_data.join(
+                #     insert_data,
+                #     on="customerId",
+                #     how="inner"
+                # # )
+                # if existing_records.isEmpty():
+                debug("Inserting data")
+                debug(insert_data.show())
+                insert_data.write.format("delta").mode("append").save(minio_output_path)
 
-                if existing_records.isEmpty():
-                    insert_data.write.format("delta").mode("append").save(minio_output_path)
-
-        elif operation == "u":  # Update
+        elif operation == "u":
             update_data = parsed_data.filter(col("operation") == "u") \
                 .select(
                 col("after_customerId").alias("customerId"),
@@ -152,17 +158,26 @@ def process_batch(batch_df, batch_id):
             )
 
             if not update_data.isEmpty():
-                delta_table.alias("target").merge(
-                    update_data.alias("source"),
-                    "target.customerId = source.customerId"
-                ).whenMatchedUpdateAll().execute()
-                
-        elif operation == "d":  # Delete
+                # Check if record exists before updating
+                exists = existing_data.join(
+                    update_data.select("customerId"),
+                    "customerId",
+                    "inner"
+                ).count() > 0
+
+                if exists:
+                    debug("Updating data")
+                    debug(update_data.show())
+                    delta_table.alias("target").merge(
+                        update_data.alias("source"),
+                        "target.customerId = source.customerId"
+                    ).whenMatchedUpdateAll()
+
+        elif operation == "d":
             delete_data = parsed_data.filter(col("operation") == "d") \
                 .select(col("before_customerId").alias("customerId"))
 
             if not delete_data.isEmpty():
-                # Check if record exists before deleting
                 exists = existing_data.join(
                     delete_data,
                     "customerId",
@@ -170,17 +185,19 @@ def process_batch(batch_df, batch_id):
                 ).count() > 0
 
                 if exists:
+                    debug("Deleting data")
+                    debug(delete_data.show())
                     delta_table.alias("target").merge(
                         delete_data.alias("source"),
                         "target.customerId = source.customerId"
                     ).whenMatchedDelete()
 
-# Read from Kafka and process each batch
 df = spark \
     .readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "kafka:9092") \
     .option("subscribe", "dbserver2.public.links") \
+    .option("failOnDataLoss", "false") \
     .load() \
     .selectExpr("CAST(value AS STRING) as value")
 
@@ -188,7 +205,7 @@ df = spark \
 query = df.writeStream \
     .foreachBatch(process_batch) \
     .option("checkpointLocation", checkpoint_dir) \
-    .trigger(processingTime='1 minutes') \
+    .trigger(processingTime='10 seconds') \
     .start()
 
 query.awaitTermination()
