@@ -171,7 +171,7 @@ def process_batch(batch_df, batch_id):
                     delta_table.alias("target").merge(
                         update_data.alias("source"),
                         "target.customerId = source.customerId"
-                    ).whenMatchedUpdateAll()
+                    ).whenMatchedUpdateAll().execute()
 
         elif operation == "d":
             delete_data = parsed_data.filter(col("operation") == "d") \
@@ -190,7 +190,7 @@ def process_batch(batch_df, batch_id):
                     delta_table.alias("target").merge(
                         delete_data.alias("source"),
                         "target.customerId = source.customerId"
-                    ).whenMatchedDelete()
+                    ).whenMatchedDelete().execute()
 
 df = spark \
     .readStream \

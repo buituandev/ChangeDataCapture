@@ -9,3 +9,6 @@ None
 None
 Inserting data
 None
+Operation: c
+Inserting data 1
+None
