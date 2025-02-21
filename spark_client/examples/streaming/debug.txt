@@ -67,3 +67,63 @@ Deleting data
 None
 Operation: None
 None
+Operation: c
+None
+Inserting data
+None
+Operation: u
+None
+Updating data
+None
+Operation: u
+None
+Updating data
+None
+Operation: d
+None
+Deleting data
+None
+Operation: None
+None
+Operation: c
+None
+Inserting data
+None
+Operation: c
+None
+Inserting data
+None
+Operation: c
+None
+Inserting data
+None
+Operation: c
+None
+Inserting data
+None
+Operation: d
+None
+Deleting data
+None
+Operation: None
+None
+Operation: u
+None
+Updating data
+None
+Operation: d
+None
+Deleting data
+None
+Operation: None
+None
+Operation: d
+None
+Deleting data
+None
+Operation: None
+None
+Operation: c
+None
+Inserting data
+None

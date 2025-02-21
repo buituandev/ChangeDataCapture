@@ -89,8 +89,10 @@ def process_batch(batch_df, batch_id):
     )
     for op_type in parsed_data.select("operation").distinct().collect():
         operation = op_type["operation"]
+        debug(f"Operation: {operation}")
         try:
             existing_data = spark.read.format("delta").load(minio_output_path)
+            debug(existing_data.show())
             delta_table = DeltaTable.forPath(spark, minio_output_path)
         except:
             if operation == "c":
@@ -108,7 +110,7 @@ def process_batch(batch_df, batch_id):
                     col("timestamp")
                 )
                 if not insert_data.isEmpty():
-                    debug("Inserting data")
+                    debug("Inserting data 1")
                     debug(insert_data.show())
                     insert_data.write.format("delta").mode("append").save(minio_output_path)
             continue
@@ -129,13 +131,6 @@ def process_batch(batch_df, batch_id):
             )
 
             if not insert_data.isEmpty():
-                # # Check if record already exists
-                # existing_records = existing_data.join(
-                #     insert_data,
-                #     on="customerId",
-                #     how="inner"
-                # # )
-                # if existing_records.isEmpty():
                 debug("Inserting data")
                 debug(insert_data.show())
                 insert_data.write.format("delta").mode("append").save(minio_output_path)
@@ -156,7 +151,6 @@ def process_batch(batch_df, batch_id):
             )
 
             if not update_data.isEmpty():
-                # Check if record exists before updating
                 exists = existing_data.join(
                     update_data.select("customerId"),
                     "customerId",
@@ -169,7 +163,7 @@ def process_batch(batch_df, batch_id):
                     delta_table.alias("target").merge(
                         update_data.alias("source"),
                         "target.customerId = source.customerId"
-                    ).whenMatchedUpdateAll()
+                    ).whenMatchedUpdateAll().execute()
 
         elif operation == "d":
             delete_data = parsed_data.filter(col("operation") == "d") \
@@ -188,13 +182,14 @@ def process_batch(batch_df, batch_id):
                     delta_table.alias("target").merge(
                         delete_data.alias("source"),
                         "target.customerId = source.customerId"
-                    ).whenMatchedDelete()
+                    ).whenMatchedDelete().execute()
 
 df = spark \
     .readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "kafka:9092") \
     .option("subscribe", "dbserver2.public.links") \
+    .option("failOnDataLoss", "false") \
     .load() \
     .selectExpr("CAST(value AS STRING) as value")
 
@@ -202,7 +197,7 @@ df = spark \
 query = df.writeStream \
     .foreachBatch(process_batch) \
     .option("checkpointLocation", checkpoint_dir) \
-    .trigger(processingTime='10 seconds') \
+    .trigger(processingTime='30 seconds') \
     .start()
 
 query.awaitTermination()

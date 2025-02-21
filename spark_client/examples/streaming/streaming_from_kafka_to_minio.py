@@ -131,13 +131,6 @@ def process_batch(batch_df, batch_id):
             )
 
             if not insert_data.isEmpty():
-                # # Check if record already exists
-                # existing_records = existing_data.join(
-                #     insert_data,
-                #     on="customerId",
-                #     how="inner"
-                # # )
-                # if existing_records.isEmpty():
                 debug("Inserting data")
                 debug(insert_data.show())
                 insert_data.write.format("delta").mode("append").save(minio_output_path)
@@ -158,7 +151,6 @@ def process_batch(batch_df, batch_id):
             )
 
             if not update_data.isEmpty():
-                # Check if record exists before updating
                 exists = existing_data.join(
                     update_data.select("customerId"),
                     "customerId",
@@ -205,7 +197,7 @@ df = spark \
 query = df.writeStream \
     .foreachBatch(process_batch) \
     .option("checkpointLocation", checkpoint_dir) \
-    .trigger(processingTime='10 seconds') \
+    .trigger(processingTime='30 seconds') \
     .start()
 
 query.awaitTermination()
