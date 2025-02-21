@@ -10,6 +10,10 @@ accessKeyId='12345678'
 secretAccessKey='12345678'
 minio_output_path = "s3a://change-data-capture/customers-delta"
 checkpoint_dir = "s3a://change-data-capture/checkpoint"
+cached_schema = None
+cached_field_info = None
+select_cols = None
+ordered_fields = None
 
 # create a SparkSession
 spark = SparkSession.builder \
@@ -26,52 +30,76 @@ spark = SparkSession.builder \
     .getOrCreate()
 spark.sparkContext.setLogLevel('ERROR')
 
-def get_field_order_from_debezium_schema(json_str):
+
+def get_spark_type(debezium_type, optional=True):
+    type_mapping = {
+        "int32": IntegerType(),
+        "int64": LongType(),
+        "float": FloatType(),
+        "double": DoubleType(),
+        "boolean": BooleanType(),
+        "string": StringType(),
+        "bytes": BinaryType(),
+        "decimal": DecimalType(38, 18),
+    }
+    spark_type = type_mapping.get(debezium_type, StringType())
+    return spark_type if not optional else spark_type
+
+def get_schema_info_from_debezium(json_str):
     data = json.loads(json_str)
     schema = data['schema']
     
+    field_info = []
     for field in schema['fields']:
         if field['field'] in ['before', 'after']:
             field_defs = field['fields']
-            return [f['field'] for f in field_defs]
-    return []
+            for f in field_defs:
+                field_info.append({
+                    'name': f['field'],
+                    'type': f['type'],
+                    'optional': f.get('optional', True)
+                })
+            break
+            
+    return field_info
+
+def create_struct_type_from_debezium(field_info):
+    fields = []
+    for field in field_info:
+        spark_type = get_spark_type(field['type'], field['optional'])
+        fields.append(StructField(field['name'], spark_type, field['optional']))
+    return StructType(fields)
 
 def create_dynamic_schema(sample_json):
-    json_df = spark.read.json(spark.sparkContext.parallelize([sample_json]))
-    return json_df.schema, sample_json
+    field_info = get_schema_info_from_debezium(sample_json)
+    record_schema = create_struct_type_from_debezium(field_info)
+    schema = StructType([
+        StructField("schema", StringType(), True),
+        StructField("payload", StructType([
+            StructField("before", record_schema, True),
+            StructField("after", record_schema, True),
+            StructField("source", StringType(), True),
+            StructField("op", StringType(), True),
+            StructField("ts_ms", LongType(), True),
+            StructField("transaction", StringType(), True)
+        ]), True)
+    ])
+    return schema, sample_json, field_info
 
-def generate_select_statements(schema, original_json):
-    # Get the ordered fields from the original Debezium schema
-    ordered_fields = get_field_order_from_debezium_schema(original_json)
-    
-    # Extract the payload struct fields
-    payload_struct = schema["payload"].dataType
-    
-    # Initialize select columns with operation and timestamp
+def generate_select_statements(schema, field_info):
     select_cols = [
         col("data.payload.op").alias("operation"),
         col("data.payload.ts_ms").alias("timestamp")
     ]
     
-    # Add before fields if they exist and are a struct
-    if "before" in [f.name for f in payload_struct.fields]:
-        before_field = payload_struct["before"]
-        if isinstance(before_field.dataType, StructType):
-            for field_name in ordered_fields:
-                select_cols.append(
-                    col(f"data.payload.before.{field_name}").alias(f"before_{field_name}")
-                )
+    for field in field_info:
+        field_name = field['name']
+        select_cols.extend([
+            col(f"data.payload.before.{field_name}").alias(f"before_{field_name}"),
+            col(f"data.payload.after.{field_name}").alias(f"after_{field_name}")
+        ])
     
-    # Add after fields if they exist and are a struct
-    if "after" in [f.name for f in payload_struct.fields]:
-        after_field = payload_struct["after"]
-        if isinstance(after_field.dataType, StructType):
-            for field_name in ordered_fields:
-                select_cols.append(
-                    col(f"data.payload.after.{field_name}").alias(f"after_{field_name}")
-                )
-    
-    return select_cols, ordered_fields
+    return select_cols, [f['name'] for f in field_info]
 
 def debug(message):
     if message is None:
@@ -84,15 +112,21 @@ def debug(message):
         with open(txt_path, "a") as f:
             f.write(message + "\n")
 
-def process_batch(batch_df, batch_id):
+def process_batch(batch_df, batch_id, key_column_name='id'):
+    global cached_schema, catched_field_info, select_cols, ordered_fields
     if batch_df.isEmpty():
         return
+    if not cached_schema:
+        sample_json = batch_df.first()["value"]
+        cached_schema, _, cached_field_info = create_dynamic_schema(sample_json)
     
-    sample_json = batch_df.first()["value"]
-    schema, original_json = create_dynamic_schema(sample_json)
+    parsed_batch = batch_df.select(from_json(col("value"), cached_schema).alias("data"))
+    if not select_cols or not ordered_fields:
+        select_cols, ordered_fields = generate_select_statements(cached_schema, cached_field_info)
     
-    parsed_batch = batch_df.select(from_json(col("value"), schema).alias("data"))
-    select_cols, ordered_fields = generate_select_statements(schema, original_json)
+    if key_column_name not in ordered_fields:
+        raise ValueError(f"Key column '{key_column_name}' not found in schema fields: {ordered_fields}")
+    
     parsed_data = parsed_batch.select(select_cols)
     
     for op_type in parsed_data.select("operation").distinct().collect():
@@ -108,6 +142,7 @@ def process_batch(batch_df, batch_id):
                 insert_data = parsed_data.filter(col("operation") == "c").select(insert_cols)
                 if not insert_data.isEmpty():
                     debug("Inserting data 1")
+                    print('Initializing data')
                     debug(insert_data.show())
                     insert_data.write.format("delta").mode("append").save(minio_output_path)
             continue
@@ -118,6 +153,7 @@ def process_batch(batch_df, batch_id):
 
             if not insert_data.isEmpty():
                 debug("Inserting data")
+                print('Inserting data')
                 debug(insert_data.show())
                 insert_data.write.format("delta").mode("append").save(minio_output_path)
 
@@ -126,39 +162,39 @@ def process_batch(batch_df, batch_id):
             update_data = parsed_data.filter(col("operation") == "u").select(update_cols)
             
             if not update_data.isEmpty():
-                key_column = ordered_fields[0]
                 exists = existing_data.join(
-                    update_data.select(key_column),
-                    key_column,
+                    update_data.select(key_column_name),
+                    key_column_name,
                     "inner"
                 ).count() > 0
 
                 if exists:
                     debug("Updating data")
+                    print('Updating data')
                     debug(update_data.show())
                     delta_table.alias("target").merge(
                         update_data.alias("source"),
-                        f"target.{key_column} = source.{key_column}"
+                        f"target.{key_column_name} = source.{key_column_name}"
                     ).whenMatchedUpdateAll().execute()
 
         elif operation == "d":
-            key_column = ordered_fields[0]  # Use first field as key
             delete_data = parsed_data.filter(col("operation") == "d") \
-                .select(col(f"before_{key_column}").alias(key_column))
+                .select(col(f"before_{key_column_name}").alias(key_column_name))
 
             if not delete_data.isEmpty():
                 exists = existing_data.join(
                     delete_data,
-                    key_column,
+                    key_column_name,
                     "inner"
                 ).count() > 0
 
                 if exists:
                     debug("Deleting data")
+                    print('Deleting data')
                     debug(delete_data.show())
                     delta_table.alias("target").merge(
                         delete_data.alias("source"),
-                        f"target.{key_column} = source.{key_column}"
+                        f"target.{key_column_name} = source.{key_column_name}"
                     ).whenMatchedDelete().execute()
 
 df = spark \
@@ -170,9 +206,8 @@ df = spark \
     .load() \
     .selectExpr("CAST(value AS STRING) as value")
 
-# Write stream with foreachBatch
 query = df.writeStream \
-    .foreachBatch(process_batch) \
+    .foreachBatch(lambda df, id: process_batch(df, id, key_column_name="customerId")) \
     .option("checkpointLocation", checkpoint_dir) \
     .trigger(processingTime='10 seconds') \
     .start()

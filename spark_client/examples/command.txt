@@ -3,3 +3,4 @@ spark-submit --master spark://spark-master:7077 --packages org.apache.spark:spar
 https://medium.com/@hhuseyinkafali/end-to-end-data-engineering-project-with-postgresql-debezium-connector-kafka-spark-6442c08d748f
 https://github.com/erkansirin78/data-generator/blob/master/dataframe_to_postgresql.py
 https://medium.com/@erhanstn/end-to-end-change-data-capture-cdc-project-with-postgresql-kafka-and-spark-3575e6a9e042
+docker exec -it spark-client bash -c "cd /opt/examples/streaming && spark-submit --master spark://spark-master:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,io.delta:delta-core_2.12:2.4.0 streaming_from_kafka_to_minio.py"
