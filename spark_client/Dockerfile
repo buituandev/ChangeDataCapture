@@ -15,3 +15,6 @@ RUN pip install pyspark==3.4.1
 
 # Set SPARK_CLASSPATH to include PostgreSQL JDBC driver
 ENV SPARK_CLASSPATH="/opt/postgresql-42.7.5.jar"
+
+COPY requirements.txt /tmp/
+RUN pip install -r /tmp/requirements.txt

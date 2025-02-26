@@ -1,0 +1,39 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Postgres PSQL",
+            "type": "shell",
+            "command": "docker exec -it postgres bash -c \"psql -U postgres -d postgres\"",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "panel": "dedicated",
+                "group": "terminal1"
+            }
+        },
+        {
+            "label": "Kafka",
+            "type": "shell",
+            "command": "docker-compose exec kafka /kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --from-beginning --property print.key=true --topic dbserver2.public.links",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "dedicated",
+                "group": "terminal1"
+            }
+        },
+        {
+            "label": "Spark Submit - Client",
+            "type": "shell",
+            "command": "docker exec -it spark-client bash -c \"cd /opt/examples/streaming && spark-submit --master spark://spark-master:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,io.delta:delta-core_2.12:2.4.0 streaming_from_kafka_to_minio.py\"",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "dedicated",
+                "group": "terminal2"
+            }
+        }
+    ]
+}

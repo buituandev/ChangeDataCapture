@@ -1,12 +1,14 @@
 import os
 import json
+import datetime
+import time
 
+from croniter import croniter
 from pyspark.errors import AnalysisException
-from pyspark.sql.functions import from_json, col, from_unixtime, window
+from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import *
 from delta.tables import *
-from datetime import datetime
-from croniter import croniter
+from pyspark.sql.streaming import *
 
 # Initialize Spark Session
 accessKeyId = '12345678'
@@ -17,7 +19,6 @@ cached_schema = None
 cached_field_info = None
 select_cols = None
 ordered_fields = None
-future_data = None
 
 # create a SparkSession
 spark = SparkSession.builder \
@@ -133,40 +134,17 @@ def debug(message):
     else:
         with open(txt_path, "a") as f:
             f.write(message + "\n")
-            
-def save_cached_schema(schema, field_info):
-    schema_json = schema.json()
-    with open("/opt/examples/streaming/schema.json", "w") as f:
-        f.write(schema_json)
-    with open("/opt/examples/streaming/field_info.json", "w") as f:
-        f.write(json.dumps(field_info))
-
-def load_cached_schema():
-    with open("/opt/examples/streaming/schema.json", "r") as f:
-        schema_json = f.read()
-    schema = StructType.fromJson(json.loads(schema_json))
-    with open("/opt/examples/streaming/field_info.json", "r") as f:
-        field_info = json.loads(f.read())
-    return schema, field_info
-
-def is_cached_schema():
-    return os.path.exists("/opt/examples/streaming/schema.json") and os.path.exists("/opt/examples/streaming/field_info.json")
 
 
-def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minute'):
-    global cached_schema, cached_field_info, select_cols, ordered_fields, future_data
+def process_batch(batch_df, batch_id, key_column_name='id'):
+    global cached_schema, cached_field_info, select_cols, ordered_fields
 
     if batch_df.isEmpty():
-        if future_data is None:
-            return
-    
-    if is_cached_schema():
-        cached_schema, cached_field_info = load_cached_schema()
-    
+        return
+
     if not cached_schema:
         data_json = batch_df.first()["value"]
         cached_schema, _, cached_field_info = create_dynamic_schema(data_json)
-        save_cached_schema(cached_schema, cached_field_info)
 
     parsed_batch = batch_df.select(from_json(col("value"), cached_schema).alias("data"))
     if not select_cols or not ordered_fields:
@@ -175,42 +153,9 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
     if key_column_name not in ordered_fields:
         raise ValueError(f"Key column '{key_column_name}' not found in schema fields: {ordered_fields}")
 
-    parsed_data = parsed_batch.select(select_cols) \
-        .withColumn("event_time", from_unixtime(col("timestamp") / 1000))
-        
-    windowed_data = parsed_data \
-    .withColumn("window_start", window(col("event_time"), time_data).getField("start")) \
-    .withColumn("window_end", window(col("event_time"), time_data).getField("end"))
-    
-    print(windowed_data.show())
-    
-    window_groups = windowed_data.select("window_start", "window_end").distinct().collect()
-    
-    for window_group in window_groups:
-        window_start = window_group["window_start"]
-        window_end = window_group["window_end"]
+    parsed_data = parsed_batch.select(select_cols)
 
-        
-        window_batch = windowed_data.filter(
-            (col("window_start") == window_start) & 
-            (col("window_end") == window_end)
-        )
-        
-        print(f"Processing window: {window_start} to {window_end}")
-        
-        if future_data is not None:
-            window_batch = window_batch.union(future_data)
-            future_data = None
-    
-        # current_window_data = parsed_data.filter(
-        #     col("event_time") < window_end
-        # )
-        
-        future_data = windowed_data.filter(
-            col("event_time") >= window_end
-        )
-
-    for op_type in window_batch.select("operation").distinct().collect():
+    for op_type in parsed_data.select("operation").distinct().collect():
         operation = op_type["operation"]
         debug(f"Operation: {operation}")
         try:
@@ -220,7 +165,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         except AnalysisException:
             if operation == "c":
                 insert_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
-                insert_data = window_batch.filter(col("operation") == "c").select(insert_cols)
+                insert_data = parsed_data.filter(col("operation") == "c").select(insert_cols)
                 if not insert_data.isEmpty():
                     debug("Inserting data 1")
                     print('Initializing data')
@@ -230,7 +175,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
 
         if operation == "c":
             insert_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
-            insert_data = window_batch.filter(col("operation") == "c").select(insert_cols)
+            insert_data = parsed_data.filter(col("operation") == "c").select(insert_cols)
 
             if not insert_data.isEmpty():
                 debug("Inserting data")
@@ -240,7 +185,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
 
         elif operation == "u":
             update_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
-            update_data = window_batch.filter(col("operation") == "u").select(update_cols)
+            update_data = parsed_data.filter(col("operation") == "u").select(update_cols)
 
             if not update_data.isEmpty():
                 exists = existing_data.join(
@@ -259,7 +204,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
                     ).whenMatchedUpdateAll().execute()
 
         elif operation == "d":
-            delete_data = window_batch.filter(col("operation") == "d") \
+            delete_data = parsed_data.filter(col("operation") == "d") \
                 .select(col(f"before_{key_column_name}").alias(key_column_name))
 
             if not delete_data.isEmpty():
@@ -278,36 +223,71 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
                         f"target.{key_column_name} = source.{key_column_name}"
                     ).whenMatchedDelete().execute()
 
-def run_stream(process_time):    
-    df = spark \
-        .readStream \
-        .format("kafka") \
-        .option("kafka.bootstrap.servers", "kafka:9092") \
-        .option("subscribe", "dbserver2.public.links") \
-        .option("failOnDataLoss", "false") \
-        .load() \
-        .selectExpr("CAST(value AS STRING) as value")
 
-    query = df.writeStream \
-        .foreachBatch(lambda dataframe, b_id: process_batch(dataframe, id, key_column_name="customerId", time_data=process_time)) \
-        .option("checkpointLocation", checkpoint_dir) \
-        .trigger(processingTime=process_time) \
-        .start()
+def create_streaming_query(processing_time_seconds: int) -> StreamingQuery:
+        """Create and return a streaming query with specified processing time."""
+        df = spark.readStream \
+            .format("kafka") \
+            .option("kafka.bootstrap.servers", "kafka:9092") \
+            .option("subscribe", "dbserver2.public.links") \
+            .option("failOnDataLoss", "false") \
+            .option("maxOffsetsPerTrigger", 10000) \
+            .load() \
+            .selectExpr("CAST(value AS STRING) as value")
 
-    query.awaitTermination()
+        return df.writeStream \
+            .foreachBatch(lambda dataframe, b_id: process_batch(dataframe, id, key_column_name="customerId")) \
+            .option("checkpointLocation", checkpoint_dir) \
+            .trigger(processingTime=f'{processing_time_seconds} seconds') \
+            .start()
+            
+def run_with_cron(cron_expression: str):
+    """Run the streaming job with cron-based scheduling."""
+    current_query: Optional[StreamingQuery] = None
+    
+    while True:
+        try:
+            start_time = datetime.datetime.now()
+            processing_time = _calculate_processing_window(cron_expression)
+            
+            print(f"Stream process starts at {start_time}")
+            print(f"Processing window: {processing_time} seconds")
+
+            if current_query and current_query.isActive:
+                current_query.stop()
+                while current_query.status.get('isTriggerActive', False):
+                    time.sleep(1)
+
+            current_query = create_streaming_query(processing_time)
+
+            _wait_for_next_trigger(cron_expression)
+
+        except Exception as e:
+            print(f"Error in streaming job: {e}")
+            if current_query and current_query.isActive:
+                current_query.stop()
+            time.sleep(60)
 
 def _calculate_processing_window(cron_expression: str) -> int:
     """Calculate processing window with safety margin."""
-    now = datetime.now()
+    now = datetime.datetime.now()
     cron = croniter(cron_expression, now)
-    next_run = cron.get_next(datetime)
-    following_run = cron.get_next(datetime)
+    next_run = cron.get_next(datetime.datetime)
+    following_run = cron.get_next(datetime.datetime)
     
     interval = (following_run - next_run).total_seconds()
-    return int(interval)
+    return int(interval * 0.8)
+
+def _wait_for_next_trigger(cron_expression: str):
+    """Wait until the next cron trigger time."""
+    now = datetime.datetime.now()
+    cron = croniter(cron_expression, now)
+    next_run = cron.get_next(datetime.datetime)
+    sleep_time = max(0, (next_run - now).total_seconds())
+    
+    if sleep_time > 0:
+        print(f"Waiting {sleep_time} seconds until next trigger at {next_run}")
+        time.sleep(sleep_time)
 
 if __name__ == "__main__":
-    cronn_expression = "*/1 * * * *"
-    process_time = str(_calculate_processing_window(cronn_expression)) + ' seconds'
-    print(f"Processing time: {process_time}")
-    run_stream(process_time)
+    run_with_cron("*/5 * * * *")
