@@ -1,1 +1,173 @@
-{"fields":[{"metadata":{},"name":"schema","nullable":true,"type":"string"},{"metadata":{},"name":"payload","nullable":true,"type":{"fields":[{"metadata":{},"name":"before","nullable":true,"type":{"fields":[{"metadata":{},"name":"customerId","nullable":false,"type":"long"},{"metadata":{},"name":"customerFName","nullable":true,"type":"string"},{"metadata":{},"name":"customerLName","nullable":true,"type":"string"},{"metadata":{},"name":"customerEmail","nullable":true,"type":"string"},{"metadata":{},"name":"customerPassword","nullable":true,"type":"string"},{"metadata":{},"name":"customerStreet","nullable":true,"type":"string"},{"metadata":{},"name":"customerCity","nullable":true,"type":"string"},{"metadata":{},"name":"customerState","nullable":true,"type":"string"},{"metadata":{},"name":"customerZipcode","nullable":true,"type":"long"}],"type":"struct"}},{"metadata":{},"name":"after","nullable":true,"type":{"fields":[{"metadata":{},"name":"customerId","nullable":false,"type":"long"},{"metadata":{},"name":"customerFName","nullable":true,"type":"string"},{"metadata":{},"name":"customerLName","nullable":true,"type":"string"},{"metadata":{},"name":"customerEmail","nullable":true,"type":"string"},{"metadata":{},"name":"customerPassword","nullable":true,"type":"string"},{"metadata":{},"name":"customerStreet","nullable":true,"type":"string"},{"metadata":{},"name":"customerCity","nullable":true,"type":"string"},{"metadata":{},"name":"customerState","nullable":true,"type":"string"},{"metadata":{},"name":"customerZipcode","nullable":true,"type":"long"}],"type":"struct"}},{"metadata":{},"name":"source","nullable":true,"type":"string"},{"metadata":{},"name":"op","nullable":true,"type":"string"},{"metadata":{},"name":"ts_ms","nullable":true,"type":"long"},{"metadata":{},"name":"transaction","nullable":true,"type":"string"}],"type":"struct"}}],"type":"struct"}
+{
+    "fields": [
+        {
+            "metadata": {},
+            "name": "schema",
+            "nullable": true,
+            "type": "string"
+        },
+        {
+            "metadata": {},
+            "name": "payload",
+            "nullable": true,
+            "type": {
+                "fields": [
+                    {
+                        "metadata": {},
+                        "name": "before",
+                        "nullable": true,
+                        "type": {
+                            "fields": [
+                                {
+                                    "metadata": {},
+                                    "name": "customerId",
+                                    "nullable": false,
+                                    "type": "long"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerFName",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerLName",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerEmail",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerPassword",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerStreet",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerCity",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerState",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerZipcode",
+                                    "nullable": true,
+                                    "type": "long"
+                                }
+                            ],
+                            "type": "struct"
+                        }
+                    },
+                    {
+                        "metadata": {},
+                        "name": "after",
+                        "nullable": true,
+                        "type": {
+                            "fields": [
+                                {
+                                    "metadata": {},
+                                    "name": "customerId",
+                                    "nullable": false,
+                                    "type": "long"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerFName",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerLName",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerEmail",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerPassword",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerStreet",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerCity",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerState",
+                                    "nullable": true,
+                                    "type": "string"
+                                },
+                                {
+                                    "metadata": {},
+                                    "name": "customerZipcode",
+                                    "nullable": true,
+                                    "type": "long"
+                                }
+                            ],
+                            "type": "struct"
+                        }
+                    },
+                    {
+                        "metadata": {},
+                        "name": "source",
+                        "nullable": true,
+                        "type": "string"
+                    },
+                    {
+                        "metadata": {},
+                        "name": "op",
+                        "nullable": true,
+                        "type": "string"
+                    },
+                    {
+                        "metadata": {},
+                        "name": "ts_ms",
+                        "nullable": true,
+                        "type": "long"
+                    },
+                    {
+                        "metadata": {},
+                        "name": "transaction",
+                        "nullable": true,
+                        "type": "string"
+                    }
+                ],
+                "type": "struct"
+            }
+        }
+    ],
+    "type": "struct"
+}

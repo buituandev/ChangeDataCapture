@@ -13,7 +13,6 @@ accessKeyId = '12345678'
 secretAccessKey = '12345678'
 minio_output_path = "s3a://change-data-capture/customers-delta"
 checkpoint_dir = "s3a://change-data-capture/checkpoint"
-table = "dbserver2.public.links"
 cached_schema = None
 cached_field_info = None
 select_cols = None
@@ -78,6 +77,20 @@ def create_struct_type_from_debezium(field_info):
 
 
 def create_dynamic_schema(data_json):
+    """ This is how filed_info looks like:
+
+ field_info = [
+     {'name': 'customerId', 'type': 'int64', 'optional': False},
+     {'name': 'customerFName', 'type': 'string', 'optional': True},
+     {'name': 'customerLName', 'type': 'string', 'optional': True},
+     {'name': 'customerEmail', 'type': 'string', 'optional': True},
+     {'name': 'customerPassword', 'type': 'string', 'optional': True},
+     {'name': 'customerStreet', 'type': 'string', 'optional': True},
+     {'name': 'customerCity', 'type': 'string', 'optional': True},
+     {'name': 'customerState', 'type': 'string', 'optional': True},
+     {'name': 'customerZipcode', 'type': 'int64', 'optional': True}
+ ]
+"""
     field_info = get_schema_info_from_debezium(data_json)
     record_schema = create_struct_type_from_debezium(field_info)
     schema = StructType([
@@ -110,13 +123,16 @@ def generate_select_statements(schema, field_info):
     return select_columns, [f['name'] for f in field_info]
 
 
-def operation_to_sql_history(time_windows, sql):
-    csv_path = "/opt/examples/streaming/sql_history.csv"
-    if not os.path.exists(csv_path):
-        with open(csv_path, "w") as f:
-            f.write("time_windows;sql\n")
-    with open(csv_path, "a") as f:
-        f.write(f"{time_windows};{sql}\n")
+def debug(message):
+    if message is None:
+        message = "None"
+    txt_path = "/opt/examples/streaming/debug.txt"
+    if not os.path.exists(txt_path):
+        with open(txt_path, "w") as f:
+            f.write(message + "\n")
+    else:
+        with open(txt_path, "a") as f:
+            f.write(message + "\n")
             
 def save_cached_schema(schema, field_info):
     schema_json = schema.json()
@@ -151,30 +167,30 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         data_json = batch_df.first()["value"]
         cached_schema, _, cached_field_info = create_dynamic_schema(data_json)
         save_cached_schema(cached_schema, cached_field_info)
+
+    parsed_batch = batch_df.select(from_json(col("value"), cached_schema).alias("data"))
+    if not select_cols or not ordered_fields:
+        select_cols, ordered_fields = generate_select_statements(cached_schema, cached_field_info)
+
+    if key_column_name not in ordered_fields:
+        raise ValueError(f"Key column '{key_column_name}' not found in schema fields: {ordered_fields}")
+
+    parsed_data = parsed_batch.select(select_cols) \
+        .withColumn("event_time", from_unixtime(col("timestamp") / 1000))
+        
+    windowed_data = parsed_data \
+    .withColumn("window_start", window(col("event_time"), time_data).getField("start")) \
+    .withColumn("window_end", window(col("event_time"), time_data).getField("end"))
     
-    if batch_df.isEmpty() == False:
-        parsed_batch = batch_df.select(from_json(col("value"), cached_schema).alias("data"))
-        if not select_cols or not ordered_fields:
-            select_cols, ordered_fields = generate_select_statements(cached_schema, cached_field_info)
-
-        if key_column_name not in ordered_fields:
-            raise ValueError(f"Key column '{key_column_name}' not found in schema fields: {ordered_fields}")
-
-        parsed_data = parsed_batch.select(select_cols) \
-            .withColumn("event_time", from_unixtime(col("timestamp") / 1000))
-            
-        windowed_data = parsed_data \
-        .withColumn("window_start", window(col("event_time"), time_data).getField("start")) \
-        .withColumn("window_end", window(col("event_time"), time_data).getField("end"))
-            
-        window_groups = windowed_data.select("window_start", "window_end").distinct().collect()
-    else:
-        window_groups = future_data.select("window_start", "window_end").distinct().collect()
+    print(windowed_data.show())
+    
+    window_groups = windowed_data.select("window_start", "window_end").distinct().collect()
     
     for window_group in window_groups:
         window_start = window_group["window_start"]
         window_end = window_group["window_end"]
 
+        
         window_batch = windowed_data.filter(
             (col("window_start") == window_start) & 
             (col("window_end") == window_end)
@@ -185,6 +201,10 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         if future_data is not None:
             window_batch = window_batch.union(future_data)
             future_data = None
+    
+        # current_window_data = parsed_data.filter(
+        #     col("event_time") < window_end
+        # )
         
         future_data = windowed_data.filter(
             col("event_time") >= window_end
@@ -192,24 +212,19 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
 
     for op_type in window_batch.select("operation").distinct().collect():
         operation = op_type["operation"]
-        event_time = window_batch.select("event_time").first()["event_time"]
+        debug(f"Operation: {operation}")
         try:
             existing_data = spark.read.format("delta").load(minio_output_path)
+            debug(existing_data.show())
             delta_table = DeltaTable.forPath(spark, minio_output_path)
         except AnalysisException:
             if operation == "c":
                 insert_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
                 insert_data = window_batch.filter(col("operation") == "c").select(insert_cols)
                 if not insert_data.isEmpty():
+                    debug("Inserting data 1")
                     print('Initializing data')
-                    fields_str = ", ".join(ordered_fields + ["timestamp"])
-                    values_list = insert_data.collect()
-                    for values in values_list:
-                        values = [str(v) for v in values]
-                        values_str = ", ".join(values)
-                        values_str = values_str.replace("None", "NULL")
-                        sql = f"INSERT INTO `{table}` ({fields_str}) VALUES ({values_str})"
-                        operation_to_sql_history(event_time, sql)
+                    debug(insert_data.show())
                     insert_data.write.format("delta").mode("append").save(minio_output_path)
             continue
 
@@ -218,16 +233,9 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
             insert_data = window_batch.filter(col("operation") == "c").select(insert_cols)
 
             if not insert_data.isEmpty():
+                debug("Inserting data")
                 print('Inserting data')
-                fields_str = ", ".join(ordered_fields + ["timestamp"])
-                values_list = insert_data.collect()
-                for values in values_list:
-                    values = [str(v) for v in values]
-                    values_str = ", ".join(values)
-                    values_str = values_str.replace("None", "NULL")
-                    sql = f"INSERT INTO `{table}` ({fields_str}) VALUES ({values_str})"
-                    operation_to_sql_history(event_time, sql)
-                
+                debug(insert_data.show())
                 insert_data.write.format("delta").mode("append").save(minio_output_path)
 
         elif operation == "u":
@@ -242,16 +250,9 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
                 ).count() > 0
 
                 if exists:
+                    debug("Updating data")
                     print('Updating data')
-                    fields = ordered_fields + ["timestamp"]
-                    values_list = update_data.collect()
-                    for values in values_list:
-                        str_values = [str(v) for v in values]
-                        set_clause = ", ".join([f"{field} = '{value}'" for field, value in zip(fields, str_values)])
-                        key_value = str_values[ordered_fields.index(key_column_name)]
-                        set_clause = set_clause.replace("None", "NULL")
-                        sql = f"UPDATE `{table}` SET {set_clause} WHERE {key_column_name} = '{key_value}'"
-                        operation_to_sql_history(event_time, sql)
+                    debug(update_data.show())
                     delta_table.alias("target").merge(
                         update_data.alias("source"),
                         f"target.{key_column_name} = source.{key_column_name}"
@@ -269,12 +270,9 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
                 ).count() > 0
 
                 if exists:
+                    debug("Deleting data")
                     print('Deleting data')
-                    values_list = delete_data.collect()
-                    for values in values_list:
-                        key_value = str(values[0])
-                        sql = f"DELETE FROM `{table}` WHERE {key_column_name} = '{key_value}'"
-                        operation_to_sql_history(event_time, sql)   
+                    debug(delete_data.show())
                     delta_table.alias("target").merge(
                         delete_data.alias("source"),
                         f"target.{key_column_name} = source.{key_column_name}"
@@ -285,7 +283,7 @@ def run_stream(process_time):
         .readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", "kafka:9092") \
-        .option("subscribe", table) \
+        .option("subscribe", "dbserver2.public.links") \
         .option("failOnDataLoss", "false") \
         .load() \
         .selectExpr("CAST(value AS STRING) as value")
