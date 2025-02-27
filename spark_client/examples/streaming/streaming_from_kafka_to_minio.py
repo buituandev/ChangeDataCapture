@@ -152,7 +152,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         cached_schema, _, cached_field_info = create_dynamic_schema(data_json)
         save_cached_schema(cached_schema, cached_field_info)
     
-    if batch_df.isEmpty() == False:
+    if not batch_df.isEmpty():
         parsed_batch = batch_df.select(from_json(col("value"), cached_schema).alias("data"))
         if not select_cols or not ordered_fields:
             select_cols, ordered_fields = generate_select_statements(cached_schema, cached_field_info)
