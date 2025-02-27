@@ -1,17 +1,12 @@
-2025-02-26 08:46:06;DELETE FROM `dbserver2.public.links` WHERE customerId = '25000'
-2025-02-26 08:46:06;DELETE FROM `dbserver2.public.links` WHERE customerId = '24000'
-2025-02-26 08:46:06;DELETE FROM `dbserver2.public.links` WHERE customerId = '23000'
-2025-02-26 08:46:06;DELETE FROM `dbserver2.public.links` WHERE customerId = '22000'
-2025-02-26 08:47:29;INSERT INTO `dbserver2.public.links` (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (23000, John, Doe, MD, None, None, None, None, None, 1740559649803)
-2025-02-26 08:47:29;INSERT INTO `dbserver2.public.links` (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (22000, John, Doe, MD, None, None, None, None, None, 1740559649803)
-2025-02-26 08:47:29;INSERT INTO `dbserver2.public.links` (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (24000, John, Doe, MD, None, None, None, None, None, 1740559649804)
-2025-02-26 08:47:29;INSERT INTO `dbserver2.public.links` (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (25000, John, Doe, MD, None, None, None, None, None, 1740559649806)
-2025-02-26 08:48:29;UPDATE `dbserver2.public.links` SET customerId = '25000', customerFName = 'Marry', customerLName = 'Doe', customerEmail = 'MD', customerPassword = 'None', customerStreet = 'None', customerCity = 'None', customerState = 'MD', customerZipcode = 'None', timestamp = '1740559709980' WHERE customerId = '25000'
-2025-02-26 08:53:24;DELETE FROM `dbserver2.public.links` WHERE customerId = '25000'
-2025-02-26 08:53:24;DELETE FROM `dbserver2.public.links` WHERE customerId = '24000'
-2025-02-26 08:53:24;DELETE FROM `dbserver2.public.links` WHERE customerId = '23000'
-2025-02-26 08:53:24;DELETE FROM `dbserver2.public.links` WHERE customerId = '22000'
-2025-02-26 08:54:58;INSERT INTO `dbserver2.public.links` (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (23000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740560098898)
-2025-02-26 08:54:58;INSERT INTO `dbserver2.public.links` (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (22000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740560098899)
-2025-02-26 08:54:58;INSERT INTO `dbserver2.public.links` (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (24000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740560098899)
-2025-02-26 08:54:58;INSERT INTO `dbserver2.public.links` (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (25000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740560098900)
+2025-02-27 06:48:25;DELETE FROM dbserver2.public.links WHERE customerId = '25000'
+2025-02-27 06:48:25;DELETE FROM dbserver2.public.links WHERE customerId = '24000'
+2025-02-27 06:48:25;DELETE FROM dbserver2.public.links WHERE customerId = '23000'
+2025-02-27 06:48:25;DELETE FROM dbserver2.public.links WHERE customerId = '22000'
+2025-02-27 06:48:25;DELETE FROM dbserver2.public.links WHERE customerId = '26000'
+2025-02-27 06:48:25;DELETE FROM dbserver2.public.links WHERE customerId = '27000'
+2025-02-27 06:50:10;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (23000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740639010770)
+2025-02-27 06:50:10;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (22000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740639010770)
+2025-02-27 06:50:10;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (24000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740639010771)
+2025-02-27 06:50:17;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (25000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740639017344)
+2025-02-27 06:50:17;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (26000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740639017345)
+2025-02-27 06:50:17;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (27000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740639017346)

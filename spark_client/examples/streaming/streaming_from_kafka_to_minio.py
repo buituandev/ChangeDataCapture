@@ -2,9 +2,10 @@ import os
 import json
 
 from pyspark.errors import AnalysisException
-from pyspark.sql.functions import from_json, col, from_unixtime, window
-from pyspark.sql.types import *
-from delta.tables import *
+from pyspark.sql.functions import from_json, col, from_unixtime, window, lit, date_format
+from pyspark.sql.types import StructType, IntegerType, LongType, FloatType, DoubleType, StringType, StructField, BinaryType, DecimalType, BooleanType
+from pyspark.sql import SparkSession
+from delta.tables import DeltaTable
 from datetime import datetime
 from croniter import croniter
 
@@ -144,7 +145,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         if future_data is None:
             return
     
-    if is_cached_schema():
+    if is_cached_schema() and cached_schema is None:
         cached_schema, cached_field_info = load_cached_schema()
     
     if not cached_schema:
@@ -192,9 +193,9 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
 
     for op_type in window_batch.select("operation").distinct().collect():
         operation = op_type["operation"]
-        event_time = window_batch.select("event_time").first()["event_time"]
         try:
             existing_data = spark.read.format("delta").load(minio_output_path)
+            existing_data.show()
             delta_table = DeltaTable.forPath(spark, minio_output_path)
         except AnalysisException:
             if operation == "c":
@@ -202,13 +203,17 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
                 insert_data = window_batch.filter(col("operation") == "c").select(insert_cols)
                 if not insert_data.isEmpty():
                     print('Initializing data')
+                    print(insert_data.show())
                     fields_str = ", ".join(ordered_fields + ["timestamp"])
                     values_list = insert_data.collect()
                     for values in values_list:
                         values = [str(v) for v in values]
                         values_str = ", ".join(values)
                         values_str = values_str.replace("None", "NULL")
-                        sql = f"INSERT INTO `{table}` ({fields_str}) VALUES ({values_str})"
+                        sql = f"INSERT INTO {table} ({fields_str}) VALUES ({values_str})"
+                        timestamp_value = float(values[-1])
+                        timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
+                        event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')                        
                         operation_to_sql_history(event_time, sql)
                     insert_data.write.format("delta").mode("append").save(minio_output_path)
             continue
@@ -219,13 +224,17 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
 
             if not insert_data.isEmpty():
                 print('Inserting data')
+                print(insert_data.show())
                 fields_str = ", ".join(ordered_fields + ["timestamp"])
                 values_list = insert_data.collect()
                 for values in values_list:
                     values = [str(v) for v in values]
                     values_str = ", ".join(values)
                     values_str = values_str.replace("None", "NULL")
-                    sql = f"INSERT INTO `{table}` ({fields_str}) VALUES ({values_str})"
+                    sql = f"INSERT INTO {table} ({fields_str}) VALUES ({values_str})"
+                    timestamp_value = float(values[-1])
+                    timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
+                    event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')                    
                     operation_to_sql_history(event_time, sql)
                 
                 insert_data.write.format("delta").mode("append").save(minio_output_path)
@@ -235,50 +244,48 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
             update_data = window_batch.filter(col("operation") == "u").select(update_cols)
 
             if not update_data.isEmpty():
-                exists = existing_data.join(
-                    update_data.select(key_column_name),
-                    key_column_name,
-                    "inner"
-                ).count() > 0
-
-                if exists:
-                    print('Updating data')
-                    fields = ordered_fields + ["timestamp"]
-                    values_list = update_data.collect()
-                    for values in values_list:
-                        str_values = [str(v) for v in values]
-                        set_clause = ", ".join([f"{field} = '{value}'" for field, value in zip(fields, str_values)])
-                        key_value = str_values[ordered_fields.index(key_column_name)]
-                        set_clause = set_clause.replace("None", "NULL")
-                        sql = f"UPDATE `{table}` SET {set_clause} WHERE {key_column_name} = '{key_value}'"
-                        operation_to_sql_history(event_time, sql)
-                    delta_table.alias("target").merge(
-                        update_data.alias("source"),
-                        f"target.{key_column_name} = source.{key_column_name}"
-                    ).whenMatchedUpdateAll().execute()
+                print('Updating data')
+                print(update_data.show())
+                fields = ordered_fields + ["timestamp"]
+                values_list = update_data.collect()
+                for values in values_list:
+                    str_values = [str(v) for v in values]
+                    set_clause = ", ".join([f"{field} = '{value}'" for field, value in zip(fields, str_values)])
+                    key_value = str_values[ordered_fields.index(key_column_name)]
+                    set_clause = set_clause.replace("None", "NULL")
+                    sql = f"UPDATE {table} SET {set_clause} WHERE {key_column_name} = '{key_value}'"
+                    timestamp_value = float(values[-1])
+                    timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
+                    event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')
+                    operation_to_sql_history(event_time, sql)
+                delta_table.alias("target").merge(
+                    update_data.alias("source"),
+                    f"target.{key_column_name} = source.{key_column_name}"
+                ).whenMatchedUpdateAll().execute()
 
         elif operation == "d":
             delete_data = window_batch.filter(col("operation") == "d") \
                 .select(col(f"before_{key_column_name}").alias(key_column_name))
+            delete_cols = [col(f"before_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
+            delete_data_time_event = window_batch.filter(col("operation") == "d").select(delete_cols)
 
             if not delete_data.isEmpty():
-                exists = existing_data.join(
-                    delete_data,
-                    key_column_name,
-                    "inner"
-                ).count() > 0
-
-                if exists:
-                    print('Deleting data')
-                    values_list = delete_data.collect()
-                    for values in values_list:
-                        key_value = str(values[0])
-                        sql = f"DELETE FROM `{table}` WHERE {key_column_name} = '{key_value}'"
-                        operation_to_sql_history(event_time, sql)   
-                    delta_table.alias("target").merge(
-                        delete_data.alias("source"),
-                        f"target.{key_column_name} = source.{key_column_name}"
-                    ).whenMatchedDelete().execute()
+                print('Deleting data')
+                print(delete_data.show())
+                values_list = delete_data_time_event.collect()
+                for values in values_list:
+                    key_value = str(values[0])
+                    sql = f"DELETE FROM {table} WHERE {key_column_name} = '{key_value}'"
+                    timestamp_value = float(values[-1])
+                    timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
+                    event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')                    
+                    operation_to_sql_history(event_time, sql)   
+                delta_table.alias("target").merge(
+                    delete_data.alias("source"),
+                    f"target.{key_column_name} = source.{key_column_name}"
+                ).whenMatchedDelete().execute()
+        
+        existing_data.show()
 
 def run_stream(process_time):    
     df = spark \
