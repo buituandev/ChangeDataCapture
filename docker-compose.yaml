@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   spark-master:
     container_name: spark-master
@@ -7,7 +6,7 @@ services:
             limits:
               cpus: '1'
               memory: "2g"
-    image: veribilimiokulu/pyspark-3.4.1_python-3.8:1.0
+    image: bitnami/spark:3.4.1
     ports:
     
       - "4040:4040"
@@ -16,7 +15,9 @@ services:
       - "18080:18080"
     networks:
       - vbo
-    command: sh spark-master.sh
+    volumes:
+      - ./spark:/opt/spark
+    command: sh /opt/spark/spark-master.sh
 
   spark-worker:
     deploy:
@@ -24,15 +25,16 @@ services:
             limits:
               cpus: '1'
               memory: "2g"
-    image: veribilimiokulu/pyspark-3.4.1_python-3.8:1.0
+    image: bitnami/spark:3.4.1
     depends_on:
       - spark-master
     ports:
       - "8081-8089:8081"
     networks:
       - vbo
-    command: sh spark-worker.sh
-
+    volumes:
+      - ./spark:/opt/spark
+    command: sh /opt/spark/spark-worker.sh
   spark-client:
     container_name: spark-client
     deploy:
@@ -47,7 +49,7 @@ services:
     networks:
       - vbo
     volumes:
-      - ./spark_client/examples:/opt/examples
+      - ./spark_client/src:/opt/src
     command: sleep infinity
 
 # S3 compatible object storage: MinIO

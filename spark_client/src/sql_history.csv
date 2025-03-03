@@ -16,3 +16,15 @@
 2025-03-03 02:36:53;DELETE FROM dbserver2.public.links WHERE customerId = '22000'
 2025-03-03 02:36:53;DELETE FROM dbserver2.public.links WHERE customerId = '26000'
 2025-03-03 02:36:53;DELETE FROM dbserver2.public.links WHERE customerId = '27000'
+2025-03-03 03:30:23;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (23000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740972623544)
+2025-03-03 03:30:23;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (22000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740972623545)
+2025-03-03 03:30:23;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (24000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740972623546)
+2025-03-03 03:30:23;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (25000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740972623546)
+2025-03-03 03:30:23;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (26000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740972623547)
+2025-03-03 03:30:23;INSERT INTO dbserver2.public.links (customerId, customerFName, customerLName, customerEmail, customerPassword, customerStreet, customerCity, customerState, customerZipcode, timestamp) VALUES (27000, John, Doe, MD, NULL, NULL, NULL, NULL, NULL, 1740972623548)
+2025-03-03 03:31:37;DELETE FROM dbserver2.public.links WHERE customerId = '25000'
+2025-03-03 03:31:37;DELETE FROM dbserver2.public.links WHERE customerId = '24000'
+2025-03-03 03:31:37;DELETE FROM dbserver2.public.links WHERE customerId = '23000'
+2025-03-03 03:31:37;DELETE FROM dbserver2.public.links WHERE customerId = '22000'
+2025-03-03 03:31:37;DELETE FROM dbserver2.public.links WHERE customerId = '26000'
+2025-03-03 03:31:37;DELETE FROM dbserver2.public.links WHERE customerId = '27000'
