@@ -34,6 +34,16 @@
                 "panel": "dedicated",
                 "group": "terminal2"
             }
+        },
+        {
+            "label" : "Run Docker Compose",
+            "type" : "shell",
+            "command" : "docker-compose up",
+            "problemMatcher" : [],
+            "presentation" : {
+                "panel" : "dedicated",
+                "group" : "terminal3"
+            }
         }
     ]
 }
