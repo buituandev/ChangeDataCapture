@@ -2,7 +2,7 @@ import os
 import json
 
 from pyspark.errors import AnalysisException
-from pyspark.sql.functions import from_json, col, from_unixtime, window, lit, date_format
+from pyspark.sql.functions import from_json, col, from_unixtime, window
 from pyspark.sql.types import StructType, IntegerType, LongType, FloatType, DoubleType, StringType, StructField, BinaryType, DecimalType, BooleanType
 from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
@@ -25,7 +25,7 @@ ordered_fields = None
 future_data = None
 
 spark = SparkSession.builder \
-    .appName("Spark Example MinIO") \
+    .appName("Spark x MinIO") \
     .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.0,io.delta:delta-core_2.12:2.4.0") \
     .config("spark.hadoop.fs.s3a.access.key", accessKeyId) \
     .config("spark.hadoop.fs.s3a.secret.key", secretAccessKey) \
