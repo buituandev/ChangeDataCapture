@@ -184,7 +184,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         
         print(f"Processing window: {window_start} to {window_end}")
         
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        current_time = datetime.now()
         if(window_end > current_time):
             if future_data is None:
                 future_data = window_batch
@@ -222,8 +222,9 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
 
             elif operation == "d":
                 delete_operation_processing(ordered_fields, window_batch, delta_table, key_column_name)
-            
-        existing_data.show()
+        
+        if existing_data is not None:    
+            existing_data.show()
         future_data.show()
             
         
