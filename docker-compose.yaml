@@ -99,21 +99,40 @@ services:
       - postgres-db-volume:/var/lib/postgresql/data
     networks:
       - vbo
-
   connect:
     container_name: connect
-    image: quay.io/debezium/connect:3.1
+    image: debezium/connect:2.7.3.Final
     ports:
      - 8083:8083
+    hostname: connect
     depends_on:
      - kafka
      - postgres
     environment:
      - BOOTSTRAP_SERVERS=kafka:9092
+     - CONNECT_REST_ADVERTISED_HOST_NAME=connect
      - GROUP_ID=1
      - CONFIG_STORAGE_TOPIC=my_connect_configs
      - OFFSET_STORAGE_TOPIC=my_connect_offsets
      - STATUS_STORAGE_TOPIC=my_connect_statuses
+     - KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+     - VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+     - ENABLE_DEBEZIUM_SCRIPTING=true
+    networks:
+      - vbo
+
+# Debezium UI
+  debezium-ui:
+    container_name: ui
+    image: debezium/debezium-ui:latest
+    ports:
+     - 8085:8080
+    depends_on:
+      - connect
+    environment:
+     - KAFKA_CONNECT_URI=http://connect:8083
+    extra_hosts:
+     - "localhost:host-gateway" 
     networks:
       - vbo
 
