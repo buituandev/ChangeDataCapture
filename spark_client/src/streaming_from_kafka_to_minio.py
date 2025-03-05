@@ -23,6 +23,7 @@ cached_field_info = None
 select_cols = None
 ordered_fields = None
 future_data = None
+is_halfway = False
 
 spark = SparkSession.builder \
     .appName("Spark x MinIO") \
@@ -139,7 +140,7 @@ def is_cached_schema():
 
 #region Batch Processing
 def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minute'):
-    global cached_schema, cached_field_info, select_cols, ordered_fields, future_data
+    global cached_schema, cached_field_info, select_cols, ordered_fields, future_data, is_halfway
 
     if batch_df.isEmpty():
         if future_data is None:
@@ -183,6 +184,16 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         
         print(f"Processing window: {window_start} to {window_end}")
         
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if(window_end > current_time):
+            if future_data is None:
+                future_data = window_batch
+            is_halfway = True
+            return
+        else:
+            if future_data is not None and not is_halfway:
+                future_data = None
+        
         if future_data is not None:
             window_batch = window_batch.union(future_data)
             future_data = None
@@ -190,28 +201,31 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         future_data = windowed_data.filter(
             col("event_time") >= window_end
         )
+        window_batch.show()
 
-    for op_type in window_batch.select("operation").distinct().collect():
-        operation = op_type["operation"]
-        try:
-            existing_data = spark.read.format("delta").load(minio_output_path)
-            existing_data.show()
-            delta_table = DeltaTable.forPath(spark, minio_output_path)
-        except AnalysisException:
+        for op_type in window_batch.select("operation").distinct().collect():
+            operation = op_type["operation"]
+            try:
+                existing_data = spark.read.format("delta").load(minio_output_path)
+                existing_data.show()
+                delta_table = DeltaTable.forPath(spark, minio_output_path)
+            except AnalysisException:
+                if operation == "c":
+                    insert_operation_processing(ordered_fields, window_batch)
+                continue
+
             if operation == "c":
                 insert_operation_processing(ordered_fields, window_batch)
-            continue
 
-        if operation == "c":
-            insert_operation_processing(ordered_fields, window_batch)
+            elif operation == "u":
+                update_operation_processing(ordered_fields, window_batch, delta_table, key_column_name)
 
-        elif operation == "u":
-            update_operation_processing(ordered_fields, window_batch, delta_table, key_column_name)
-
-        elif operation == "d":
-            delete_operation_processing(ordered_fields, window_batch, delta_table, key_column_name)
-        
+            elif operation == "d":
+                delete_operation_processing(ordered_fields, window_batch, delta_table, key_column_name)
+            
         existing_data.show()
+        future_data.show()
+            
         
 def insert_operation_processing(ordered_fields, window_batch):
     insert_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
