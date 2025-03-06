@@ -110,6 +110,16 @@ def generate_select_statements(schema, field_info):
         ])
 
     return select_columns, [f['name'] for f in field_info]
+
+def format_sql_value(value, data_type):
+    """Format a value correctly for SQL based on its type."""
+    if value is None or str(value).upper() == 'NONE':
+        return "NULL"
+    elif data_type in ['int32', 'int64', 'float', 'double', 'decimal']:
+        return str(value)
+    else:
+        escaped_value = str(value).replace("'", "''")
+        return f"'{escaped_value}'"
 #endregion
 
 #region Cache Schema
@@ -240,17 +250,21 @@ def insert_operation_processing(ordered_fields, window_batch):
         
         all_value_sets = []
         for values in values_list:
-            values = [str(v) for v in values]
-            value_set = "(" + ", ".join([v.replace("None", "NULL") for v in values]) + ")"
+            formatted_values = []
+            for v in values:
+                if v is None or str(v).upper() == 'NONE':
+                    formatted_values.append("NULL")
+                elif isinstance(v, (int, float)):
+                    formatted_values.append(str(v))
+                else:
+                    escaped_str = str(v).replace("'", "''")
+                    formatted_values.append(f"'{escaped_str}'")
+                    
+            value_set = "(" + ", ".join(formatted_values) + ")"
             all_value_sets.append(value_set)
-            values_str = ", ".join(values)
-            # values_str = values_str.replace("None", "NULL")
-            # sql = f"INSERT INTO {table} ({fields_str}) VALUES ({values_str})"
-            # timestamp_value = float(values[-1])
-            # timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
+            
         batch_sql = f"INSERT INTO {table} ({fields_str}) VALUES {', '.join(all_value_sets)}"
-        # event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')                        
-        operation_to_sql_history(datetime.now, batch_sql)
+        operation_to_sql_history("none", batch_sql)
         insert_data.write.format("delta").mode("append").save(minio_output_path)
 
 def update_operation_processing(ordered_fields, window_batch, delta_table, key_column_name):
@@ -260,18 +274,53 @@ def update_operation_processing(ordered_fields, window_batch, delta_table, key_c
     if not update_data.isEmpty():
         print('Updating data')
         print(update_data.show())
-        fields = ordered_fields + ["timestamp"]
         values_list = update_data.collect()
+        
+        # Get field type for key column early
+        key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
+        
+        fields_to_update = ordered_fields.copy()
+        updates = {}
+        key_values = []
+        
         for values in values_list:
             str_values = [str(v) for v in values]
-            set_clause = ", ".join([f"{field} = '{value}'" for field, value in zip(fields, str_values)])
             key_value = str_values[ordered_fields.index(key_column_name)]
-            set_clause = set_clause.replace("None", "NULL")
-            sql = f"UPDATE {table} SET {set_clause} WHERE {key_column_name} = '{key_value}'"
-            timestamp_value = float(values[-1])
-            timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
-            event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')
-            operation_to_sql_history(event_time, sql)
+            key_values.append(key_value)
+            
+            for i, field in enumerate(fields_to_update):
+                if field != key_column_name:
+                    if field not in updates:
+                        updates[field] = {}
+                    
+                    value = str_values[i]
+                    if value.upper() == 'NONE':
+                        updates[field][key_value] = "NULL"
+                    else:
+                        escaped_value = value.replace("'", "''")
+                        updates[field][key_value] = escaped_value
+        
+        # Build CASE statements with proper key formatting
+        case_statements = []
+        for field, field_updates in updates.items():
+            case_parts = []
+            for key, value in field_updates.items():
+                # Format key correctly based on its type
+                formatted_key = format_sql_value(key, key_field_type)
+                
+                if value == "NULL":
+                    case_parts.append(f"WHEN {key_column_name} = {formatted_key} THEN {value}")
+                else:
+                    case_parts.append(f"WHEN {key_column_name} = {formatted_key} THEN '{value}'")
+            
+            case_statement = f"{field} = CASE {' '.join(case_parts)} ELSE {field} END"
+            case_statements.append(case_statement)
+        
+        if case_statements:
+            keys_in_clause = ", ".join([format_sql_value(k, key_field_type) for k in key_values])
+            batch_sql = f"UPDATE {table} SET {', '.join(case_statements)} WHERE {key_column_name} IN ({keys_in_clause})"
+            operation_to_sql_history("none", batch_sql)
+            
         delta_table.alias("target").merge(
             update_data.alias("source"),
             f"target.{key_column_name} = source.{key_column_name}"
@@ -287,13 +336,21 @@ def delete_operation_processing(ordered_fields, window_batch, delta_table, key_c
         print('Deleting data')
         print(delete_data.show())
         values_list = delete_data_time_event.collect()
+        key_values = []
+        
+        # Get field type for proper formatting
+        key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
+
         for values in values_list:
             key_value = str(values[0])
-            sql = f"DELETE FROM {table} WHERE {key_column_name} = '{key_value}'"
-            timestamp_value = float(values[-1])
-            timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
-            event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')                    
-            operation_to_sql_history(event_time, sql)   
+            key_values.append(key_value)
+        
+        if key_values:
+            # Format keys properly based on type
+            keys_in_clause = ", ".join([format_sql_value(k, key_field_type) for k in key_values])
+            batch_sql = f"DELETE FROM {table} WHERE {key_column_name} IN ({keys_in_clause})"
+            operation_to_sql_history("none", batch_sql)
+               
         delta_table.alias("target").merge(
             delete_data.alias("source"),
             f"target.{key_column_name} = source.{key_column_name}"
@@ -345,7 +402,7 @@ def get_time_until_next_cron(cron_expression: str) -> tuple:
     return seconds_until_next, int(interval_seconds)
 
 if __name__ == "__main__":
-    cron_expression = "*/2 * * * *"
+    cron_expression = "*/1 * * * *"
     delay_seconds, interval_seconds = get_time_until_next_cron(cron_expression)
     
     print(f"Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
