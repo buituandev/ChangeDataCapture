@@ -1,12 +1,13 @@
 import os
 import json
+import time
 
 from pyspark.errors import AnalysisException
 from pyspark.sql.functions import from_json, col, from_unixtime, window
 from pyspark.sql.types import StructType, IntegerType, LongType, FloatType, DoubleType, StringType, StructField, BinaryType, DecimalType, BooleanType
 from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
-from datetime import datetime
+from datetime import datetime, timedelta
 from croniter import croniter
 
 #region Spark Configuration
@@ -195,7 +196,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
                 future_data = None
         
         if future_data is not None:
-            window_batch = window_batch.union(future_data)
+            window_batch = future_data.union(window_batch)
             future_data = None
         
         future_data = windowed_data.filter(
@@ -236,15 +237,20 @@ def insert_operation_processing(ordered_fields, window_batch):
         print(insert_data.show())
         fields_str = ", ".join(ordered_fields + ["timestamp"])
         values_list = insert_data.collect()
+        
+        all_value_sets = []
         for values in values_list:
             values = [str(v) for v in values]
+            value_set = "(" + ", ".join([v.replace("None", "NULL") for v in values]) + ")"
+            all_value_sets.append(value_set)
             values_str = ", ".join(values)
-            values_str = values_str.replace("None", "NULL")
-            sql = f"INSERT INTO {table} ({fields_str}) VALUES ({values_str})"
-            timestamp_value = float(values[-1])
-            timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
-            event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')                        
-            operation_to_sql_history(event_time, sql)
+            # values_str = values_str.replace("None", "NULL")
+            # sql = f"INSERT INTO {table} ({fields_str}) VALUES ({values_str})"
+            # timestamp_value = float(values[-1])
+            # timestamp_seconds = timestamp_value / 1000 if timestamp_value > 1e10 else timestamp_value
+        batch_sql = f"INSERT INTO {table} ({fields_str}) VALUES {', '.join(all_value_sets)}"
+        # event_time = datetime.fromtimestamp(timestamp_seconds).strftime('%Y-%m-%d %H:%M:%S')                        
+        operation_to_sql_history(datetime.now, batch_sql)
         insert_data.write.format("delta").mode("append").save(minio_output_path)
 
 def update_operation_processing(ordered_fields, window_batch, delta_table, key_column_name):
@@ -323,9 +329,39 @@ def _calculate_processing_window(cron_expression: str) -> int:
     interval = (following_run - next_run).total_seconds()
     return int(interval)
 
+def get_time_until_next_cron(cron_expression: str) -> tuple:
+    """
+    Calculate time until next cron trigger and the interval between triggers.
+    Returns (seconds_until_next_trigger, interval_seconds)
+    """
+    now = datetime.now()
+    cron = croniter(cron_expression, now)
+    next_run = cron.get_next(datetime)
+    following_run = cron.get_next(datetime)
+    
+    seconds_until_next = (next_run - now).total_seconds()
+    interval_seconds = (following_run - next_run).total_seconds()
+    
+    return seconds_until_next, int(interval_seconds)
+
 if __name__ == "__main__":
-    cronn_expression = "*/1 * * * *"
-    process_time = str(_calculate_processing_window(cronn_expression)) + ' seconds'
-    print(f"Processing time: {process_time}")
+    cron_expression = "*/2 * * * *"
+    delay_seconds, interval_seconds = get_time_until_next_cron(cron_expression)
+    
+    print(f"Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Next scheduled run: {(datetime.now() + timedelta(seconds=delay_seconds)).strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Waiting {delay_seconds:.1f} seconds until next scheduled time...")
+
+    MAX_TEST_DELAY = 60  # 60 seconds max for testing
+    actual_delay = min(delay_seconds, MAX_TEST_DELAY) if delay_seconds > 0 else 0
+    
+    if actual_delay > 0:
+        print(f"Sleeping for {actual_delay:.1f} seconds...")
+        time.sleep(actual_delay)
+        print(f"Waking up at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    process_time = f"{interval_seconds} seconds"
+    print(f"Setting processing interval to {process_time}")
+    
     run_stream(process_time)
 #endregion
