@@ -1,11 +1,14 @@
 import os
 import json
+import time
 
 from pyspark.errors import AnalysisException
-from pyspark.sql.functions import from_json, col
+from pyspark.sql.functions import from_json, col, from_unixtime, window
 from pyspark.sql.types import StructType, IntegerType, LongType, FloatType, DoubleType, StringType, StructField, BinaryType, DecimalType, BooleanType
 from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
+from datetime import datetime, timedelta
+from croniter import croniter
 
 #region Spark Configuration
 accessKeyId = '12345678'
@@ -22,7 +25,6 @@ select_cols = None
 ordered_fields = None
 future_data = None
 is_halfway = False
-existing_data = None
 
 spark = SparkSession.builder \
     .appName("Spark x MinIO") \
@@ -149,10 +151,11 @@ def is_cached_schema():
 
 #region Batch Processing
 def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minute'):
-    global cached_schema, cached_field_info, select_cols, ordered_fields, future_data, is_halfway, existing_data
+    global cached_schema, cached_field_info, select_cols, ordered_fields, future_data, is_halfway
 
     if batch_df.isEmpty():
-        return
+        if future_data is None:
+            return
     
     if is_cached_schema() and cached_schema is None:
         cached_schema, cached_field_info = load_cached_schema()
@@ -162,43 +165,83 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         cached_schema, _, cached_field_info = create_dynamic_schema(data_json)
         save_cached_schema(cached_schema, cached_field_info)
     
+    if not batch_df.isEmpty():
+        parsed_batch = batch_df.select(from_json(col("value"), cached_schema).alias("data"))
+        if not select_cols or not ordered_fields:
+            select_cols, ordered_fields = generate_select_statements(cached_schema, cached_field_info)
 
-    parsed_batch = batch_df.select(from_json(col("value"), cached_schema).alias("data"))
-    if not select_cols or not ordered_fields:
-        select_cols, ordered_fields = generate_select_statements(cached_schema, cached_field_info)
+        if key_column_name not in ordered_fields:
+            raise ValueError(f"Key column '{key_column_name}' not found in schema fields: {ordered_fields}")
 
-    if key_column_name not in ordered_fields:
-        raise ValueError(f"Key column '{key_column_name}' not found in schema fields: {ordered_fields}")
+        parsed_data = parsed_batch.select(select_cols) \
+            .withColumn("event_time", from_unixtime(col("timestamp") / 1000))
+            
+        windowed_data = parsed_data \
+        .withColumn("window_start", window(col("event_time"), time_data).getField("start")) \
+        .withColumn("window_end", window(col("event_time"), time_data).getField("end"))
+            
+        window_groups = windowed_data.select("window_start", "window_end").distinct().collect()
+    else:
+        window_groups = future_data.select("window_start", "window_end").distinct().collect()
     
-    parsed_data = parsed_batch.select(select_cols)
+    for window_group in window_groups:
+        window_start = window_group["window_start"]
+        window_end = window_group["window_end"]
 
-    for op_type in parsed_data.select("operation").distinct().collect():
-        operation = op_type["operation"]
-        try:
-            existing_data = spark.read.format("delta").load(minio_output_path)
-            existing_data.show()
-            delta_table = DeltaTable.forPath(spark, minio_output_path)
-        except AnalysisException:
-            if operation == "c":
-                insert_operation_processing(ordered_fields, parsed_data)
-            continue
-
-        if operation == "c":
-            insert_operation_processing(ordered_fields, parsed_data)
-
-        elif operation == "u":
-            update_operation_processing(ordered_fields, parsed_data, delta_table, key_column_name)
-
-        elif operation == "d":
-            delete_operation_processing(ordered_fields, parsed_data, delta_table, key_column_name)
-    
-        print('Data count: ')
-        print(existing_data.count())
-                    
+        window_batch = windowed_data.filter(
+            (col("window_start") == window_start) & 
+            (col("window_end") == window_end)
+        )
         
-def insert_operation_processing(ordered_fields, parsed_data):
+        print(f"Processing window: {window_start} to {window_end}")
+        
+        current_time = datetime.now()
+        if(window_end > current_time):
+            if future_data is None:
+                future_data = window_batch
+            is_halfway = True
+            return
+        else:
+            if future_data is not None and not is_halfway:
+                future_data = None
+        
+        if future_data is not None:
+            window_batch = future_data.union(window_batch)
+            future_data = None
+        
+        future_data = windowed_data.filter(
+            col("event_time") >= window_end
+        )
+        window_batch.show()
+
+        for op_type in window_batch.select("operation").distinct().collect():
+            operation = op_type["operation"]
+            try:
+                existing_data = spark.read.format("delta").load(minio_output_path)
+                existing_data.show()
+                delta_table = DeltaTable.forPath(spark, minio_output_path)
+            except AnalysisException:
+                if operation == "c":
+                    insert_operation_processing(ordered_fields, window_batch)
+                continue
+
+            if operation == "c":
+                insert_operation_processing(ordered_fields, window_batch)
+
+            elif operation == "u":
+                update_operation_processing(ordered_fields, window_batch, delta_table, key_column_name)
+
+            elif operation == "d":
+                delete_operation_processing(ordered_fields, window_batch, delta_table, key_column_name)
+        
+        if existing_data is not None:    
+            existing_data.show()
+        future_data.show()
+            
+        
+def insert_operation_processing(ordered_fields, window_batch):
     insert_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
-    insert_data = parsed_data.filter(col("operation") == "c").select(insert_cols)
+    insert_data = window_batch.filter(col("operation") == "c").select(insert_cols)
     if not insert_data.isEmpty():
         print('Insert data')
         print(insert_data.show())
@@ -224,15 +267,16 @@ def insert_operation_processing(ordered_fields, parsed_data):
         operation_to_sql_history("none", batch_sql)
         insert_data.write.format("delta").mode("append").save(minio_output_path)
 
-def update_operation_processing(ordered_fields, parse_data, delta_table, key_column_name):
+def update_operation_processing(ordered_fields, window_batch, delta_table, key_column_name):
     update_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
-    update_data = parse_data.filter(col("operation") == "u").select(update_cols)
+    update_data = window_batch.filter(col("operation") == "u").select(update_cols)
 
     if not update_data.isEmpty():
         print('Updating data')
         print(update_data.show())
         values_list = update_data.collect()
         
+        # Get field type for key column early
         key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
         
         fields_to_update = ordered_fields.copy()
@@ -256,10 +300,12 @@ def update_operation_processing(ordered_fields, parse_data, delta_table, key_col
                         escaped_value = value.replace("'", "''")
                         updates[field][key_value] = escaped_value
         
+        # Build CASE statements with proper key formatting
         case_statements = []
         for field, field_updates in updates.items():
             case_parts = []
             for key, value in field_updates.items():
+                # Format key correctly based on its type
                 formatted_key = format_sql_value(key, key_field_type)
                 
                 if value == "NULL":
@@ -280,11 +326,11 @@ def update_operation_processing(ordered_fields, parse_data, delta_table, key_col
             f"target.{key_column_name} = source.{key_column_name}"
         ).whenMatchedUpdateAll().execute()
 
-def delete_operation_processing(ordered_fields, parsed_data, delta_table, key_column_name):
-    delete_data = parsed_data.filter(col("operation") == "d") \
+def delete_operation_processing(ordered_fields, window_batch, delta_table, key_column_name):
+    delete_data = window_batch.filter(col("operation") == "d") \
                 .select(col(f"before_{key_column_name}").alias(key_column_name))
     delete_cols = [col(f"before_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
-    delete_data_time_event = parsed_data.filter(col("operation") == "d").select(delete_cols)
+    delete_data_time_event = window_batch.filter(col("operation") == "d").select(delete_cols)
 
     if not delete_data.isEmpty():
         print('Deleting data')
@@ -292,6 +338,7 @@ def delete_operation_processing(ordered_fields, parsed_data, delta_table, key_co
         values_list = delete_data_time_event.collect()
         key_values = []
         
+        # Get field type for proper formatting
         key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
 
         for values in values_list:
@@ -299,10 +346,11 @@ def delete_operation_processing(ordered_fields, parsed_data, delta_table, key_co
             key_values.append(key_value)
         
         if key_values:
+            # Format keys properly based on type
             keys_in_clause = ", ".join([format_sql_value(k, key_field_type) for k in key_values])
             batch_sql = f"DELETE FROM {table} WHERE {key_column_name} IN ({keys_in_clause})"
             operation_to_sql_history("none", batch_sql)
-
+               
         delta_table.alias("target").merge(
             delete_data.alias("source"),
             f"target.{key_column_name} = source.{key_column_name}"
@@ -310,7 +358,7 @@ def delete_operation_processing(ordered_fields, parsed_data, delta_table, key_co
 #endregion
 
 #region Application
-def run_stream(process_time):
+def run_stream(process_time):    
     df = spark \
         .readStream \
         .format("kafka") \
@@ -328,7 +376,49 @@ def run_stream(process_time):
 
     query.awaitTermination()
 
+def _calculate_processing_window(cron_expression: str) -> int:
+    """Calculate processing window time."""
+    now = datetime.now()
+    cron = croniter(cron_expression, now)
+    next_run = cron.get_next(datetime)
+    following_run = cron.get_next(datetime)
+    
+    interval = (following_run - next_run).total_seconds()
+    return int(interval)
+
+def get_time_until_next_cron(cron_expression: str) -> tuple:
+    """
+    Calculate time until next cron trigger and the interval between triggers.
+    Returns (seconds_until_next_trigger, interval_seconds)
+    """
+    now = datetime.now()
+    cron = croniter(cron_expression, now)
+    next_run = cron.get_next(datetime)
+    following_run = cron.get_next(datetime)
+    
+    seconds_until_next = (next_run - now).total_seconds()
+    interval_seconds = (following_run - next_run).total_seconds()
+    
+    return seconds_until_next, int(interval_seconds)
+
 if __name__ == "__main__":
-    process_time = "1 minute"
+    cron_expression = "*/1 * * * *"
+    delay_seconds, interval_seconds = get_time_until_next_cron(cron_expression)
+    
+    print(f"Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Next scheduled run: {(datetime.now() + timedelta(seconds=delay_seconds)).strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Waiting {delay_seconds:.1f} seconds until next scheduled time...")
+
+    MAX_TEST_DELAY = 60  # 60 seconds max for testing
+    actual_delay = min(delay_seconds, MAX_TEST_DELAY) if delay_seconds > 0 else 0
+    
+    if actual_delay > 0:
+        print(f"Sleeping for {actual_delay:.1f} seconds...")
+        time.sleep(actual_delay)
+        print(f"Waking up at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    process_time = f"{interval_seconds} seconds"
+    print(f"Setting processing interval to {process_time}")
+    
     run_stream(process_time)
 #endregion
