@@ -2,10 +2,10 @@ services:
   spark-master:
     container_name: spark-master
     deploy:
-        resources:
-            limits:
-              cpus: '1'
-              memory: "2g"
+      resources:
+        limits:
+          cpus: '1'
+          memory: "2g"
     image: bitnami/spark:3.4.1
     ports:
       - "4040:4040"
@@ -20,10 +20,10 @@ services:
 
   spark-worker:
     deploy:
-        resources:
-            limits:
-              cpus: '1'
-              memory: "2g"
+      resources:
+        limits:
+          cpus: '1'
+          memory: "2g"
     image: bitnami/spark:3.4.1
     depends_on:
       - spark-master
@@ -37,10 +37,10 @@ services:
   spark-client:
     container_name: spark-client
     deploy:
-        resources:
-            limits:
-              cpus: '1'
-              memory: "2g"
+      resources:
+        limits:
+          cpus: '1'
+          memory: "2g"
     build: spark_client
     ports:
       - "8888:8888"
@@ -51,7 +51,7 @@ services:
       - ./spark_client/src:/opt/src
     command: sleep infinity
 
-# S3 compatible object storage: MinIO
+  # S3 compatible object storage: MinIO
   minio:
     container_name: minio
     image: "minio/minio:RELEASE.2025-02-07T23-21-09Z"
@@ -66,13 +66,13 @@ services:
       MINIO_ACCESS_KEY: "12345678"
       MINIO_SECRET_KEY: "12345678"
     command: server /data --console-address ":9001"
-    
+
   zookeeper:
     image: quay.io/debezium/zookeeper:3.1
     ports:
-     - 2181:2181
-     - 2888:2888
-     - 3888:3888
+      - 2181:2181
+      - 2888:2888
+      - 3888:3888
     networks:
       - vbo
 
@@ -85,7 +85,7 @@ services:
     ports:
       - "9021:9021"
     extra_hosts:
-     - "localhost:host-gateway" 
+      - "localhost:host-gateway"
     environment:
       CONTROL_CENTER_BOOTSTRAP_SERVERS: 'kafka:9092'
       CONTROL_CENTER_REPLICATION_FACTOR: 1
@@ -101,9 +101,9 @@ services:
     container_name: kafka
     image: quay.io/debezium/kafka:3.1
     ports:
-     - 9092:9092
+      - 9092:9092
     environment:
-     - ZOOKEEPER_CONNECT=zookeeper:2181
+      - ZOOKEEPER_CONNECT=zookeeper:2181
     networks:
       - vbo
 
@@ -111,10 +111,10 @@ services:
     container_name: postgres
     image: quay.io/debezium/example-postgres:3.1
     ports:
-     - 5433:5432
+      - 5433:5432
     environment:
-     - POSTGRES_USER=postgres
-     - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
     networks:
@@ -123,36 +123,36 @@ services:
     container_name: connect
     image: debezium/connect:2.7.3.Final
     ports:
-     - 8083:8083
+      - 8083:8083
     hostname: connect
     depends_on:
-     - kafka
-     - postgres
+      - kafka
+      - postgres
     environment:
-     - BOOTSTRAP_SERVERS=kafka:9092
-     - CONNECT_REST_ADVERTISED_HOST_NAME=connect
-     - GROUP_ID=1
-     - CONFIG_STORAGE_TOPIC=my_connect_configs
-     - OFFSET_STORAGE_TOPIC=my_connect_offsets
-     - STATUS_STORAGE_TOPIC=my_connect_statuses
-     - KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
-     - VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
-     - ENABLE_DEBEZIUM_SCRIPTING=true
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - CONNECT_REST_ADVERTISED_HOST_NAME=connect
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=my_connect_configs
+      - OFFSET_STORAGE_TOPIC=my_connect_offsets
+      - STATUS_STORAGE_TOPIC=my_connect_statuses
+      - KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - ENABLE_DEBEZIUM_SCRIPTING=true
     networks:
       - vbo
 
-# Debezium UI
+  # Debezium UI
   debezium-ui:
     container_name: ui
     image: debezium/debezium-ui:latest
     ports:
-     - 8085:8080
+      - 8085:8080
     depends_on:
       - connect
     environment:
-     - KAFKA_CONNECT_URI=http://connect:8083
+      - KAFKA_CONNECT_URI=http://connect:8083
     extra_hosts:
-     - "localhost:host-gateway" 
+      - "localhost:host-gateway"
     networks:
       - vbo
 
@@ -160,5 +160,6 @@ volumes:
   minio:
   postgres-db-volume:
 
+
 networks:
-  vbo: 
+  vbo:

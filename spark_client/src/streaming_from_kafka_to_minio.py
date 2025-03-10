@@ -206,8 +206,8 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
         elif operation == "d":
             delete_operation_processing(ordered_fields, parsed_data, delta_table, key_column_name)
 
-        print('Data count: ')
-        print(existing_data.count())
+    print('Data count: ')
+    print(existing_data.count())
 
 
 def insert_operation_processing(fields_ordered, parsed_data):
@@ -240,13 +240,16 @@ def insert_operation_processing(fields_ordered, parsed_data):
 
 
 def update_operation_processing(fields_ordered, parse_data, delta_table, key_column_name):
-    update_cols = [col(f"after_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
+    update_cols_with_timestamp = [col(f"after_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
+    update_data_with_timestamp = parse_data.filter(col("operation") == "u").select(update_cols_with_timestamp)
+    
+    update_cols = [col(f"after_{field}").alias(field) for field in fields_ordered]
     update_data = parse_data.filter(col("operation") == "u").select(update_cols)
 
     if not update_data.isEmpty():
         print('Updating data')
         print(update_data.show())
-        values_list = update_data.collect()
+        values_list = update_data_with_timestamp.collect()  # Still use data with timestamp for SQL generation
 
         key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
 
@@ -293,7 +296,10 @@ def update_operation_processing(fields_ordered, parse_data, delta_table, key_col
         delta_table.alias("target").merge(
             update_data.alias("source"),
             f"target.{key_column_name} = source.{key_column_name}"
-        ).whenMatchedUpdateAll().execute()
+        ).whenMatchedUpdate(
+            condition=None,
+            set={field: f"source.{field}" for field in fields_ordered}
+        ).execute()
 
 
 def delete_operation_processing(fields_ordered, parsed_data, delta_table, key_column_name):

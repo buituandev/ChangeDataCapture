@@ -1,0 +1,21 @@
+UPDATE links
+SET "customerFName" = 'Marry' , "customerLName"= 'Doe', "customerState" = 'MD'
+WHERE "customerId" = 18000;
+
+INSERT INTO links VALUES (23000, 'John', 'Doe', 'MD');
+INSERT INTO links VALUES (22000, 'John', 'Doe', 'MD');
+INSERT INTO links VALUES (24000, 'John', 'Doe', 'MD');
+INSERT INTO links VALUES (25000, 'John', 'Doe', 'MD');
+
+INSERT INTO links VALUES (26000, 'John', 'Doe', 'MD');
+INSERT INTO links VALUES (27000, 'John', 'Doe', 'MD');
+
+Delete from links where "customerId" = 25000;
+Delete from links where "customerId" = 24000;
+Delete from links where "customerId" = 23000;
+Delete from links where "customerId" = 22000;
+Delete from links where "customerId" = 26000;
+Delete from links where "customerId" = 27100;
+UPDATE links
+SET "customerFName" = 'Marry' , "customerLName"= 'Doe', "customerState" = 'MD'
+WHERE "customerId" = 23000;
