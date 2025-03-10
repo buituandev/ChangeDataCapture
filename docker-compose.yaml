@@ -2,38 +2,36 @@ services:
   spark-master:
     container_name: spark-master
     deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: "2g"
-    image: bitnami/spark:3.4.1
+        resources:
+            limits:
+              cpus: '1'
+              memory: "2g"
+    image: veribilimiokulu/pyspark-3.4.1_python-3.8:1.0
     ports:
+    
       - "4040:4040"
       - "7077:7077"
       - "8080:8080"
       - "18080:18080"
     networks:
       - vbo
-    volumes:
-      - ./spark:/opt/spark
-    command: sh /opt/spark/spark-master.sh
+    command: sh spark-master.sh
 
   spark-worker:
     deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: "2g"
-    image: bitnami/spark:3.4.1
+        resources:
+            limits:
+              cpus: '1'
+              memory: "2g"
+    image: veribilimiokulu/pyspark-3.4.1_python-3.8:1.0
     depends_on:
       - spark-master
     ports:
       - "8081-8089:8081"
     networks:
       - vbo
-    volumes:
-      - ./spark:/opt/spark
-    command: sh /opt/spark/spark-worker.sh
+    command: sh spark-worker.sh
+
   spark-client:
     container_name: spark-client
     deploy:
@@ -70,38 +68,38 @@ services:
   zookeeper:
     image: quay.io/debezium/zookeeper:3.1
     ports:
-      - 2181:2181
-      - 2888:2888
-      - 3888:3888
+      - "2181:2181"
+      - "2888:2888"
+      - "3888:3888"
     networks:
       - vbo
-
-  control-center:
-    image: confluentinc/cp-enterprise-control-center:7.4.0
-    hostname: control-center
-    container_name: control-center
-    depends_on:
-      - kafka
-    ports:
-      - "9021:9021"
-    extra_hosts:
-      - "localhost:host-gateway"
-    environment:
-      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'kafka:9092'
-      CONTROL_CENTER_REPLICATION_FACTOR: 1
-      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
-      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
-      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
-      CONFLIENT_METRICS_ENABLE: 'false'
-      PORT: 9021
-    networks:
-      - vbo
+  
+  #  control-center:
+  #    image: confluentinc/cp-enterprise-control-center:7.4.0
+  #    hostname: control-center
+  #    container_name: control-center
+  #    depends_on:
+  #      - kafka
+  #    ports:
+  #      - "9021:9021"
+  #    extra_hosts:
+  #      - "localhost:host-gateway"
+  #    environment:
+  #      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'kafka:9092'
+  #      CONTROL_CENTER_REPLICATION_FACTOR: 1
+  #      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+  #      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+  #      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+  #      CONFLIENT_METRICS_ENABLE: 'false'
+  #      PORT: 9021
+  #    networks:
+  #      - vbo
 
   kafka:
     container_name: kafka
     image: quay.io/debezium/kafka:3.1
     ports:
-      - 9092:9092
+      - "9092:9092"
     environment:
       - ZOOKEEPER_CONNECT=zookeeper:2181
     networks:
@@ -111,7 +109,7 @@ services:
     container_name: postgres
     image: quay.io/debezium/example-postgres:3.1
     ports:
-      - 5433:5432
+      - "5433:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -123,7 +121,7 @@ services:
     container_name: connect
     image: debezium/connect:2.7.3.Final
     ports:
-      - 8083:8083
+      - "8083:8083"
     hostname: connect
     depends_on:
       - kafka
@@ -142,19 +140,19 @@ services:
       - vbo
 
   # Debezium UI
-  debezium-ui:
-    container_name: ui
-    image: debezium/debezium-ui:latest
-    ports:
-      - 8085:8080
-    depends_on:
-      - connect
-    environment:
-      - KAFKA_CONNECT_URI=http://connect:8083
-    extra_hosts:
-      - "localhost:host-gateway"
-    networks:
-      - vbo
+#  debezium-ui:
+#    container_name: ui
+#    image: debezium/debezium-ui:latest
+#    ports:
+#      - "8085:8080"
+#    depends_on:
+#      - connect
+#    environment:
+#      - KAFKA_CONNECT_URI=http://connect:8083
+#    extra_hosts:
+#      - "localhost:host-gateway"
+#    networks:
+#      - vbo
 
 volumes:
   minio:
