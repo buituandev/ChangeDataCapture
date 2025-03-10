@@ -6,6 +6,7 @@ import pandas as pd
 import sqlalchemy
 from sqlalchemy import create_engine
 
+
 # python dataframe_to_postgresql.py -i customers.csv -hst localhost -p 5433 -u postgres -psw postgres -db postgres -t links -rst 1 -es csv
 # curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json" http://localhost:8083/connectors/ -d @debezium-postgres-connector.json
 

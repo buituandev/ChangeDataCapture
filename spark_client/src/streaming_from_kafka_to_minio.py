@@ -242,7 +242,7 @@ def insert_operation_processing(fields_ordered, parsed_data):
 def update_operation_processing(fields_ordered, parse_data, delta_table, key_column_name):
     update_cols_with_timestamp = [col(f"after_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
     update_data_with_timestamp = parse_data.filter(col("operation") == "u").select(update_cols_with_timestamp)
-    
+
     update_cols = [col(f"after_{field}").alias(field) for field in fields_ordered]
     update_data = parse_data.filter(col("operation") == "u").select(update_cols)
 
