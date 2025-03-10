@@ -3,9 +3,7 @@ import logging
 import time
 
 import pandas as pd
-import sqlalchemy
 from sqlalchemy import create_engine
-
 
 # python dataframe_to_postgresql.py -i customers.csv -hst localhost -p 5433 -u postgres -psw postgres -db postgres -t links -rst 1 -es csv
 # curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json" http://localhost:8083/connectors/ -d @debezium-postgres-connector.json
@@ -103,6 +101,7 @@ class DataFrameToPostgresql:
 
 
 if __name__ == "__main__":
+
     # Boolean options parser
     def str2bool(v):
         if isinstance(v, bool):
@@ -113,7 +112,6 @@ if __name__ == "__main__":
             return False
         else:
             raise argparse.ArgumentTypeError('Boolean value expected.')
-
 
     ap = argparse.ArgumentParser()
     ap.add_argument("-i", "--input", required=False, type=str, default="input/iris.csv",

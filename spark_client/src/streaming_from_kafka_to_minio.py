@@ -39,8 +39,8 @@ spark = SparkSession.builder \
     .getOrCreate()
 spark.sparkContext.setLogLevel('ERROR')
 
-
 # endregion
+
 
 # region Dynamic Schema Generation
 def get_spark_type(debezium_type):
@@ -127,8 +127,8 @@ def format_sql_value(value, data_type):
         escaped_value = str(value).replace("'", "''")
         return f"'{escaped_value}'"
 
-
 # endregion
+
 
 # region Cache Schema
 def operation_to_sql_history(time_windows, sql):
@@ -159,8 +159,8 @@ def load_cached_schema():
 def is_cached_schema():
     return os.path.exists(cache_schema_path) and os.path.exists(cache_field_info_path)
 
-
 # endregion
+
 
 # region Batch Processing
 def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'):
@@ -185,153 +185,137 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
         raise ValueError(f"Key column '{key_column_name}' not found in schema fields: {ordered_fields}")
 
     parsed_data = parsed_batch.select(select_cols)
+    
+    # Sort all operations by timestamp to maintain correct order
+    sorted_data = parsed_data.orderBy("timestamp")
 
-    for op_type in parsed_data.select("operation").distinct().collect():
-        operation = op_type["operation"]
-        try:
-            existing_data = spark.read.format("delta").load(minio_output_path)
-            existing_data.show()
-            delta_table = DeltaTable.forPath(spark, minio_output_path)
-        except AnalysisException:
-            if operation == "c":
-                insert_operation_processing(ordered_fields, parsed_data)
-            continue
+    try:
+        existing_data = spark.read.format("delta").load(minio_output_path)
+        delta_table = DeltaTable.forPath(spark, minio_output_path)
+    except AnalysisException:
+        # Handle first-time table creation
+        insert_data = sorted_data.filter(col("operation") == "c")
+        if not insert_data.isEmpty():
+            insert_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
+            insert_data_selected = insert_data.select(insert_cols)
+            insert_data_selected.write.format("delta").mode("append").save(minio_output_path)
+        return
 
+    for row in sorted_data.collect():
+        operation = row["operation"]
+        
         if operation == "c":
-            insert_operation_processing(ordered_fields, parsed_data)
-
+            process_single_insert(row, ordered_fields, delta_table, key_column_name)
         elif operation == "u":
-            update_operation_processing(ordered_fields, parsed_data, delta_table, key_column_name)
-
+            process_single_update(row, ordered_fields, delta_table, key_column_name)
         elif operation == "d":
-            delete_operation_processing(ordered_fields, parsed_data, delta_table, key_column_name)
+            process_single_delete(row, delta_table, key_column_name)
 
     print('Data count: ')
-    print(existing_data.count())
+    print(spark.read.format("delta").load(minio_output_path).count())
 
 
-def insert_operation_processing(fields_ordered, parsed_data):
-    insert_cols = [col(f"after_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
-    insert_data = parsed_data.filter(col("operation") == "c").select(insert_cols)
-    if not insert_data.isEmpty():
-        print('Insert data')
-        print(insert_data.show())
-        fields_str = ", ".join(fields_ordered + ["timestamp"])
-        values_list = insert_data.collect()
+def process_single_insert(row, fields_ordered, delta_table, key_column_name):
+    # Create DataFrame with just this single row
+    values = {}
+    for field in fields_ordered:
+        values[field] = row[f"after_{field}"]
+    values["timestamp"] = row["timestamp"]
+    
+    # Create a DataFrame from the single row
+    insert_data = spark.createDataFrame([values])
+    
+    print('Insert data')
+    print(insert_data.show())
 
-        all_value_sets = []
-        for values in values_list:
-            formatted_values = []
-            for v in values:
-                if v is None or str(v).upper() == 'NONE':
-                    formatted_values.append("NULL")
-                elif isinstance(v, (int, float)):
-                    formatted_values.append(str(v))
-                else:
-                    escaped_str = str(v).replace("'", "''")
-                    formatted_values.append(f"'{escaped_str}'")
-
-            value_set = "(" + ", ".join(formatted_values) + ")"
-            all_value_sets.append(value_set)
-
-        batch_sql = f"INSERT INTO {table} ({fields_str}) VALUES {', '.join(all_value_sets)}"
-        operation_to_sql_history("none", batch_sql)
-        insert_data.write.format("delta").mode("append").save(minio_output_path)
-
-
-def update_operation_processing(fields_ordered, parse_data, delta_table, key_column_name):
-    update_cols_with_timestamp = [col(f"after_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
-    update_data_with_timestamp = parse_data.filter(col("operation") == "u").select(update_cols_with_timestamp)
-
-    update_cols = [col(f"after_{field}").alias(field) for field in fields_ordered]
-    update_data = parse_data.filter(col("operation") == "u").select(update_cols)
-
-    if not update_data.isEmpty():
-        print('Updating data')
-        print(update_data.show())
-        values_list = update_data_with_timestamp.collect()  # Still use data with timestamp for SQL generation
-
-        key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
-
-        fields_to_update = fields_ordered.copy()
-        updates = {}
-        key_values = []
-
-        for values in values_list:
-            str_values = [str(v) for v in values]
-            key_value = str_values[fields_ordered.index(key_column_name)]
-            key_values.append(key_value)
-
-            for i, field in enumerate(fields_to_update):
-                if field != key_column_name:
-                    if field not in updates:
-                        updates[field] = {}
-
-                    value = str_values[i]
-                    if value.upper() == 'NONE':
-                        updates[field][key_value] = "NULL"
-                    else:
-                        escaped_value = value.replace("'", "''")
-                        updates[field][key_value] = escaped_value
-
-        case_statements = []
-        for field, field_updates in updates.items():
-            case_parts = []
-            for key, value in field_updates.items():
-                formatted_key = format_sql_value(key, key_field_type)
-
-                if value == "NULL":
-                    case_parts.append(f"WHEN {key_column_name} = {formatted_key} THEN {value}")
-                else:
-                    case_parts.append(f"WHEN {key_column_name} = {formatted_key} THEN '{value}'")
-
-            case_statement = f"{field} = CASE {' '.join(case_parts)} ELSE {field} END"
-            case_statements.append(case_statement)
-
-        if case_statements:
-            keys_in_clause = ", ".join([format_sql_value(k, key_field_type) for k in key_values])
-            batch_sql = f"UPDATE {table} SET {', '.join(case_statements)} WHERE {key_column_name} IN ({keys_in_clause})"
-            operation_to_sql_history("none", batch_sql)
-
-        delta_table.alias("target").merge(
-            update_data.alias("source"),
-            f"target.{key_column_name} = source.{key_column_name}"
-        ).whenMatchedUpdate(
-            condition=None,
-            set={field: f"source.{field}" for field in fields_ordered}
-        ).execute()
+    # Generate SQL for logging
+    fields_str = ", ".join(fields_ordered + ["timestamp"])
+    formatted_values = []
+    for field in fields_ordered + ["timestamp"]:
+        v = values[field]
+        if v is None or str(v).upper() == 'NONE':
+            formatted_values.append("NULL")
+        elif isinstance(v, (int, float)):
+            formatted_values.append(str(v))
+        else:
+            escaped_str = str(v).replace("'", "''")
+            formatted_values.append(f"'{escaped_str}'")
+            
+    value_set = "(" + ", ".join(formatted_values) + ")"
+    batch_sql = f"INSERT INTO {table} ({fields_str}) VALUES {value_set}"
+    operation_to_sql_history("none", batch_sql)
+    
+    # Execute the merge
+    delta_table.alias("target").merge(
+        insert_data.alias("source"),
+        f"target.{key_column_name} = source.{key_column_name}"
+    ).whenNotMatchedInsertAll().execute()
 
 
-def delete_operation_processing(fields_ordered, parsed_data, delta_table, key_column_name):
-    delete_data = parsed_data.filter(col("operation") == "d") \
-        .select(col(f"before_{key_column_name}").alias(key_column_name))
-    delete_cols = [col(f"before_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
-    delete_data_time_event = parsed_data.filter(col("operation") == "d").select(delete_cols)
+def process_single_update(row, fields_ordered, delta_table, key_column_name):
+    # Create DataFrame with just this single row
+    values = {}
+    for field in fields_ordered:
+        values[field] = row[f"after_{field}"]
+    values["timestamp"] = row["timestamp"]
+    
+    # Create a DataFrame from the single row
+    update_data = spark.createDataFrame([values])
+    
+    print('Updating data')
+    print(update_data.show())
 
-    if not delete_data.isEmpty():
-        print('Deleting data')
-        print(delete_data.show())
-        values_list = delete_data_time_event.collect()
-        key_values = []
+    # Generate SQL for logging
+    key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
+    key_value = str(values[key_column_name])
+    formatted_key = format_sql_value(key_value, key_field_type)
+    
+    set_clauses = []
+    for field in fields_ordered:
+        if field != key_column_name:
+            value = values[field]
+            if value is None or str(value).upper() == 'NONE':
+                set_clauses.append(f"{field} = NULL")
+            else:
+                escaped_value = str(value).replace("'", "''")
+                set_clauses.append(f"{field} = '{escaped_value}'")
+    
+    batch_sql = f"UPDATE {table} SET {', '.join(set_clauses)} WHERE {key_column_name} = {formatted_key}"
+    operation_to_sql_history("none", batch_sql)
+    
+    # Execute the merge
+    delta_table.alias("target").merge(
+        update_data.alias("source"),
+        f"target.{key_column_name} = source.{key_column_name}"
+    ).whenMatchedUpdate(
+        condition=None,
+        set={field: f"source.{field}" for field in fields_ordered}
+    ).execute()
 
-        key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
 
-        for values in values_list:
-            key_value = str(values[0])
-            key_values.append(key_value)
+def process_single_delete(row, delta_table, key_column_name):
+    # Create DataFrame with just this single row
+    key_value = row[f"before_{key_column_name}"]
+    delete_data = spark.createDataFrame([(key_value,)], [key_column_name])
+    
+    print('Deleting data')
+    print(delete_data.show())
 
-        if key_values:
-            keys_in_clause = ", ".join([format_sql_value(k, key_field_type) for k in key_values])
-            batch_sql = f"DELETE FROM {table} WHERE {key_column_name} IN ({keys_in_clause})"
-            operation_to_sql_history("none", batch_sql)
-
-        delta_table.alias("target").merge(
-            delete_data.alias("source"),
-            f"target.{key_column_name} = source.{key_column_name}"
-        ).whenMatchedDelete().execute()
-
+    # Generate SQL for logging
+    key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
+    formatted_key = format_sql_value(key_value, key_field_type)
+    
+    batch_sql = f"DELETE FROM {table} WHERE {key_column_name} = {formatted_key}"
+    operation_to_sql_history("none", batch_sql)
+    
+    # Execute the delete
+    delta_table.alias("target").merge(
+        delete_data.alias("source"),
+        f"target.{key_column_name} = source.{key_column_name}"
+    ).whenMatchedDelete().execute()
 
 # endregion
+
 
 # region Application
 def run_stream(time_process):

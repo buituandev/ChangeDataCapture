@@ -15,7 +15,7 @@ Delete from links where "customerId" = 24000;
 Delete from links where "customerId" = 23000;
 Delete from links where "customerId" = 22000;
 Delete from links where "customerId" = 26000;
-Delete from links where "customerId" = 27100;
+Delete from links where "customerId" = 23405;
 UPDATE links
 SET "customerFName" = 'Marry' , "customerLName"= 'Doe', "customerState" = 'MD'
 WHERE "customerId" = 23000;
