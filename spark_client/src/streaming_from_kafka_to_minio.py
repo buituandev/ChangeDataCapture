@@ -196,13 +196,13 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data = '1 minut
         print(existing_data.count())
                     
         
-def insert_operation_processing(ordered_fields, parsed_data):
-    insert_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
+def insert_operation_processing(fields_ordered, parsed_data):
+    insert_cols = [col(f"after_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
     insert_data = parsed_data.filter(col("operation") == "c").select(insert_cols)
     if not insert_data.isEmpty():
         print('Insert data')
         print(insert_data.show())
-        fields_str = ", ".join(ordered_fields + ["timestamp"])
+        fields_str = ", ".join(fields_ordered + ["timestamp"])
         values_list = insert_data.collect()
         
         all_value_sets = []
@@ -224,8 +224,8 @@ def insert_operation_processing(ordered_fields, parsed_data):
         operation_to_sql_history("none", batch_sql)
         insert_data.write.format("delta").mode("append").save(minio_output_path)
 
-def update_operation_processing(ordered_fields, parse_data, delta_table, key_column_name):
-    update_cols = [col(f"after_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
+def update_operation_processing(fields_ordered, parse_data, delta_table, key_column_name):
+    update_cols = [col(f"after_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
     update_data = parse_data.filter(col("operation") == "u").select(update_cols)
 
     if not update_data.isEmpty():
@@ -235,13 +235,13 @@ def update_operation_processing(ordered_fields, parse_data, delta_table, key_col
         
         key_field_type = next((f['type'] for f in cached_field_info if f['name'] == key_column_name), 'string')
         
-        fields_to_update = ordered_fields.copy()
+        fields_to_update = fields_ordered.copy()
         updates = {}
         key_values = []
         
         for values in values_list:
             str_values = [str(v) for v in values]
-            key_value = str_values[ordered_fields.index(key_column_name)]
+            key_value = str_values[fields_ordered.index(key_column_name)]
             key_values.append(key_value)
             
             for i, field in enumerate(fields_to_update):
@@ -279,11 +279,10 @@ def update_operation_processing(ordered_fields, parse_data, delta_table, key_col
             update_data.alias("source"),
             f"target.{key_column_name} = source.{key_column_name}"
         ).whenMatchedUpdateAll().execute()
-
-def delete_operation_processing(ordered_fields, parsed_data, delta_table, key_column_name):
+def delete_operation_processing(fields_ordered, parsed_data, delta_table, key_column_name):
     delete_data = parsed_data.filter(col("operation") == "d") \
                 .select(col(f"before_{key_column_name}").alias(key_column_name))
-    delete_cols = [col(f"before_{field}").alias(field) for field in ordered_fields] + [col("timestamp")]
+    delete_cols = [col(f"before_{field}").alias(field) for field in fields_ordered] + [col("timestamp")]
     delete_data_time_event = parsed_data.filter(col("operation") == "d").select(delete_cols)
 
     if not delete_data.isEmpty():
@@ -310,7 +309,7 @@ def delete_operation_processing(ordered_fields, parsed_data, delta_table, key_co
 #endregion
 
 #region Application
-def run_stream(process_time):
+def run_stream(time_process):
     df = spark \
         .readStream \
         .format("kafka") \
@@ -321,9 +320,9 @@ def run_stream(process_time):
         .selectExpr("CAST(value AS STRING) as value")
 
     query = df.writeStream \
-        .foreachBatch(lambda dataframe, b_id: process_batch(dataframe, id, key_column_name="customerId", time_data=process_time)) \
+        .foreachBatch(lambda dataframe, b_id: process_batch(dataframe, id, key_column_name="customerId", time_data=time_process)) \
         .option("checkpointLocation", checkpoint_dir) \
-        .trigger(processingTime=process_time) \
+        .trigger(processingTime=time_process) \
         .start()
 
     query.awaitTermination()
