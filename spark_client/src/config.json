@@ -22,7 +22,7 @@
   },
   "processing_config": {
     "key_column": "customerId",
-    "process_time": "1 minute",
+    "process_time": "30 seconds",
     "batch_size": 1000
   }
 }
