@@ -38,7 +38,7 @@
         {
             "label" : "Run Docker Compose",
             "type" : "shell",
-            "command" : "docker-compose up",
+            "command" : "make up",
             "problemMatcher" : [],
             "presentation" : {
                 "panel" : "dedicated",

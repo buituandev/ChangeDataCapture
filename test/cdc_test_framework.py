@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# python test/cdc_test_framework.py -hst localhost -p 5433 -u postgres -psw postgres -db postgres -t links -tm 2
+# python test/cdc_test_framework.py -hst localhost -p 5433 -u postgres -psw postgres -db postgres -t links -tm 1
 
 class CDCTestFramework:
     def __init__(self, host, port, user, password, database, table_name, runtime_minutes=5):

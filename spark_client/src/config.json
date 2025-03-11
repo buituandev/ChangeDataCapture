@@ -1,0 +1,28 @@
+{
+  "s3_config": {
+    "access_key_id": "12345678",
+    "secret_access_key": "12345678",
+    "endpoint": "http://minio:9000",
+    "path_style_access": true,
+    "ssl_enabled": false
+  },
+  "delta_config": {
+    "output_path": "s3a://change-data-capture/customers-delta",
+    "checkpoint_dir": "s3a://change-data-capture/checkpoint"
+  },
+  "kafka_config": {
+    "bootstrap_servers": "kafka:9092",
+    "topic": "dbserver2.public.links",
+    "fail_on_data_loss": false
+  },
+  "cache_config": {
+    "schema_path": "/opt/src/schema.json",
+    "field_info_path": "/opt/src/field_info.json",
+    "sql_history_path": "/opt/src/sql_history.csv"
+  },
+  "processing_config": {
+    "key_column": "customerId",
+    "process_time": "1 minute",
+    "batch_size": 1000
+  }
+}

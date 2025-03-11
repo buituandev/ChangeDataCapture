@@ -19,3 +19,16 @@ Delete from links where "customerId" = 23405;
 UPDATE links
 SET "customerFName" = 'Marry' , "customerLName"= 'Doe', "customerState" = 'MD'
 WHERE "customerId" = 23000;
+
+INSERT INTO links VALUES (25000, 'John', 'Doe', 'MD');
+INSERT INTO links VALUES (24000, 'John', 'Doe', 'MD');
+UPDATE links
+SET "customerFName" = 'Marry' , "customerLName"= 'Doe', "customerState" = 'MD'
+WHERE "customerId" = 24000;
+Delete from links where "customerId" = 25000;
+INSERT INTO links VALUES (24000, 'John', 'Doe', 'MD');
+INSERT INTO links VALUES (27000, 'John', 'Doe', 'MD');
+UPDATE links
+SET "customerFName" = 'Marry' , "customerLName"= 'Doe', "customerState" = 'MD'
+WHERE "customerId" = 25000;
+
