@@ -192,10 +192,9 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
         "key_value", 
         when(col("operation") == "d", col(f"before_{key_column_name}"))
         .when(col(f"after_{key_column_name}").isNotNull(), col(f"after_{key_column_name}"))
-        .otherwise(lit("MISSING_KEY").cast(StringType()))
     )
     
-    parsed_data.show()
+    # parsed_data.show()
     
     aggregated_batch = parsed_data.groupBy("key_value").agg(
         max_by(
@@ -217,7 +216,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
         *[col(f"latest.before_{field}").alias(f"before_{field}") for field in ordered_fields]
     )
     
-    final_df.show()
+    # final_df.show()
     
     table_exists = False
     try:
@@ -284,6 +283,8 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
     if table_exists:
         final_count = spark.read.format("delta").load(minio_output_path).count()
         print(f"Final data count: {final_count}")
+    
+    process_time = config_manager.get("processing_config", "process_time")
 
 
 def initial_insert_operation_processing(event, fields_ordered, key_column_name):
@@ -544,7 +545,7 @@ def run_stream():
     topic = config["kafka_config"]["topic"]
     fail_on_data_loss = config["kafka_config"]["fail_on_data_loss"]
     key_column = config["processing_config"]["key_column"]
-    process_time_val = config["processing_config"]["process_time"]
+    process_time = config["processing_config"]["process_time"]
     df = spark \
         .readStream \
         .format("kafka") \
@@ -558,13 +559,13 @@ def run_stream():
         .foreachBatch(
         lambda dataframe, b_id: process_batch(dataframe, id, key_column_name=key_column)) \
         .option("checkpointLocation", config["delta_config"]["checkpoint_dir"]) \
-        .trigger(processingTime=process_time_val) \
+        .trigger(processingTime=process_time) \
         .start()
 
     query.awaitTermination()
 
 
 if __name__ == "__main__":
-    # run_stream()
+    #run_stream()
     validate_data_in_minio()
 # endregion
