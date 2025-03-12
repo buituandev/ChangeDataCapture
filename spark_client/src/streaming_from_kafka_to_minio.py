@@ -157,8 +157,8 @@ def is_cached_schema():
 # endregion
 
 # region Batch Processing
-def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'):
-    global cached_schema, cached_field_info, select_cols, ordered_fields
+def process_batch(batch_df, batch_id, key_column_name='id'):
+    global cached_schema, cached_field_info, select_cols, ordered_fields, process_time
     
     if batch_df.isEmpty():
         return
@@ -179,15 +179,11 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
         raise ValueError(f"Key column '{key_column_name}' not found in schema fields: {ordered_fields}")
 
     parsed_data = parsed_batch.select(select_cols)
-    
-    # Filter null operations
     parsed_data = parsed_data.filter(col("operation").isNotNull())
-    
     parsed_data.select("operation", 
                        f"before_{key_column_name}", 
                        f"after_{key_column_name}").show(truncate=False)
     
-    # Then modify the withColumn
     parsed_data = parsed_data.withColumn(
         "key_value", 
         when(col("operation") == "d", col(f"before_{key_column_name}"))
@@ -241,7 +237,6 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
         print(f"Creating initial table with {initial_data.count()} records")
         initial_data.write.format("delta").mode("append").save(minio_output_path)
         
-        # Now the table exists
         delta_table = DeltaTable.forPath(spark, minio_output_path)
         table_exists = True
         
@@ -258,7 +253,7 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
                 col("timestamp")
             )
             
-            print(f"Processing {update_df.count()} inserts/updates in one merge")
+            print(f"Processing {update_df.count()} upserts in one merge")
             delta_table.alias("target").merge(
                 update_df.alias("source"),
                 f"target.{key_column_name} = source.{key_column_name}"
@@ -284,7 +279,10 @@ def process_batch(batch_df, batch_id, key_column_name='id', time_data='1 minute'
         final_count = spark.read.format("delta").load(minio_output_path).count()
         print(f"Final data count: {final_count}")
     
-    process_time = config_manager.get("processing_config", "process_time")
+    new_process_time = config_manager.get("processing_config", "process_time")
+    if new_process_time != process_time:
+        print(f"Process time config changed from {process_time} to {new_process_time}")
+        process_time = new_process_time
 
 
 def initial_insert_operation_processing(event, fields_ordered, key_column_name):
@@ -404,7 +402,7 @@ def delete_operation_processing(event, fields_ordered, delta_table, key_column_n
     ).whenMatchedDelete().execute()
 # endregion
 
-#region Data Validation    
+#region Data Validation
 def validate_data_in_minio():
     """Validate that the data in MinIO Delta table matches PostgreSQL source."""
     print("Starting data validation...")
@@ -507,7 +505,7 @@ def validate_data_in_minio():
                     mismatches.append((key, col, pg_row[col], delta_row[col]))
                     break  # Only report first mismatch per record
         
-        # Print summary
+        # Print final report summary
         print("=" * 60)
         print("CDC Validation Summary")
         print("=" * 60)
@@ -539,33 +537,75 @@ def validate_data_in_minio():
 
 # region Application
 def run_stream():
-    # Get latest config values
+    global process_time
+    
+    # Get initial config values
     config = config_manager.get_config()
     kafka_servers = config["kafka_config"]["bootstrap_servers"]
     topic = config["kafka_config"]["topic"]
     fail_on_data_loss = config["kafka_config"]["fail_on_data_loss"]
     key_column = config["processing_config"]["key_column"]
     process_time = config["processing_config"]["process_time"]
-    df = spark \
-        .readStream \
-        .format("kafka") \
-        .option("kafka.bootstrap.servers", kafka_servers) \
-        .option("subscribe", topic) \
-        .option("failOnDataLoss", str(fail_on_data_loss).lower()) \
-        .load() \
-        .selectExpr("CAST(value AS STRING) as value")
-
-    query = df.writeStream \
-        .foreachBatch(
-        lambda dataframe, b_id: process_batch(dataframe, id, key_column_name=key_column)) \
-        .option("checkpointLocation", config["delta_config"]["checkpoint_dir"]) \
-        .trigger(processingTime=process_time) \
-        .start()
-
-    query.awaitTermination()
+    
+    restart_required = [False]
+    batch_in_progress = [False]
+    
+    def create_query():
+        df = spark \
+            .readStream \
+            .format("kafka") \
+            .option("kafka.bootstrap.servers", kafka_servers) \
+            .option("subscribe", topic) \
+            .option("failOnDataLoss", str(fail_on_data_loss).lower()) \
+            .load() \
+            .selectExpr("CAST(value AS STRING) as value")
+        
+        def managed_batch_processing(dataframe, b_id):
+            current_process_time = process_time
+            
+            batch_in_progress[0] = True
+            
+            try:
+                process_batch(dataframe, b_id, key_column_name=key_column)
+                
+                if process_time != current_process_time:
+                    print(f"Process time changed from {current_process_time} to {process_time}")
+                    restart_required[0] = True
+            finally:
+                # Mark that batch processing has finished (whether successful or not)
+                batch_in_progress[0] = False
+        
+        return df.writeStream \
+            .foreachBatch(managed_batch_processing) \
+            .option("checkpointLocation", config["delta_config"]["checkpoint_dir"]) \
+            .trigger(processingTime=process_time) \
+            .start()
+    
+    query = create_query()
+    print(f"Started streaming query with process time: {process_time}")
+    
+    try:
+        while True:
+            import time
+            time.sleep(1)
+            
+            if restart_required[0] and not batch_in_progress[0]:
+                status = query.status
+                if status["isTriggerActive"] == False:
+                    print("Restarting query with new process time...")
+                    query.stop()
+                    query = create_query()
+                    restart_required[0] = False
+                    print(f"Query restarted with process time: {process_time}")
+    except KeyboardInterrupt:
+        print("Stopping stream processing...")
+        print("Waiting for any in-progress batch to complete before stopping...")
+        while batch_in_progress[0]:
+            time.sleep(1)
+        query.stop()
 
 
 if __name__ == "__main__":
-    #run_stream()
-    validate_data_in_minio()
+    run_stream()
+    #validate_data_in_minio()
 # endregion
