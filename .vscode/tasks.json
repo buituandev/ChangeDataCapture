@@ -44,6 +44,16 @@
                 "panel" : "dedicated",
                 "group" : "terminal3"
             }
+        },
+        {
+            "label": "Run Test Data in 1 minute",
+            "type": "shell",
+            "command": "python test/cdc_test_framework.py -hst localhost -p 5433 -u postgres -psw postgres -db postgres -t links -tm 1",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "dedicated",
+                "group": "terminal4"
+            }
         }
     ]
 }
