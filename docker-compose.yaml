@@ -1,71 +1,118 @@
+# Change Data Capture (CDC) Environment
+#
+# This configuration sets up a complete CDC pipeline with:
+# - Apache Spark cluster (master + worker)
+# - PostgreSQL as source database
+# - Debezium for CDC events
+# - Kafka for streaming
+# - MinIO as S3-compatible storage for Delta tables
+#
+# Author: Unknown
+# Version: 1.0
+
 services:
+  #---------------------------------------------------------------------------
+  # Spark Cluster
+  #---------------------------------------------------------------------------
   spark-master:
     container_name: spark-master
-    deploy:
-        resources:
-            limits:
-              cpus: '1'
-              memory: "2g"
     image: veribilimiokulu/pyspark-3.4.1_python-3.8:1.0
-    ports:
-    
-      - "4040:4040"
-      - "7077:7077"
-      - "8080:8080"
-      - "18080:18080"
-    networks:
-      - vbo
-    command: sh spark-master.sh
-
-  spark-worker:
-    deploy:
-        resources:
-            limits:
-              cpus: '1'
-              memory: "2g"
-    image: veribilimiokulu/pyspark-3.4.1_python-3.8:1.0
-    depends_on:
-      - spark-master
-    ports:
-      - "8081-8089:8081"
-    networks:
-      - vbo
-    command: sh spark-worker.sh
-
-  spark-client:
-    container_name: spark-client
     deploy:
       resources:
         limits:
           cpus: '1'
           memory: "2g"
-    build: spark_client
     ports:
-      - "8888:8888"
-      - "4041:4040"
+      - "4040:4040"  # Spark Web UI
+      - "7077:7077"  # Spark master port
+      - "8080:8080"  # Spark master web UI
+      - "18080:18080"  # Spark History Server
+    networks:
+      - vbo
+    command: sh spark-master.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  spark-worker:
+    container_name: spark-worker
+    image: veribilimiokulu/pyspark-3.4.1_python-3.8:1.0
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: "2g"
+    ports:
+      - "8081-8089:8081"  # Worker Web UI
+    networks:
+      - vbo
+    command: sh spark-worker.sh
+    depends_on:
+      - spark-master
+    restart: unless-stopped
+
+  spark-client:
+    container_name: spark-client
+    build: 
+      context: ./spark_client
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: "2g"
+    ports:
+      - "8888:8888"  # Jupyter Notebook
+      - "4041:4040"  # Spark UI for client app
     networks:
       - vbo
     volumes:
       - ./spark_client/src:/opt/src
+    depends_on:
+      - spark-master
+      - kafka
+      - minio
     command: sleep infinity
+    restart: unless-stopped
 
-  # S3 compatible object storage: MinIO
+  #---------------------------------------------------------------------------
+  # Object Storage (MinIO)
+  #---------------------------------------------------------------------------
   minio:
     container_name: minio
     image: "minio/minio:RELEASE.2025-02-07T23-21-09Z"
     volumes:
       - minio:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9000:9000"  # MinIO API
+      - "9001:9001"  # MinIO Console
     networks:
       - vbo
     environment:
       MINIO_ACCESS_KEY: "12345678"
       MINIO_SECRET_KEY: "12345678"
     command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: "1g"
 
+  #---------------------------------------------------------------------------
+  # Event Streaming (Kafka & Zookeeper)
+  #---------------------------------------------------------------------------
   zookeeper:
+    container_name: zookeeper
     image: quay.io/debezium/zookeeper:3.1
     ports:
       - "2181:2181"
@@ -73,27 +120,14 @@ services:
       - "3888:3888"
     networks:
       - vbo
-  
-  #  control-center:
-  #    image: confluentinc/cp-enterprise-control-center:7.4.0
-  #    hostname: control-center
-  #    container_name: control-center
-  #    depends_on:
-  #      - kafka
-  #    ports:
-  #      - "9021:9021"
-  #    extra_hosts:
-  #      - "localhost:host-gateway"
-  #    environment:
-  #      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'kafka:9092'
-  #      CONTROL_CENTER_REPLICATION_FACTOR: 1
-  #      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
-  #      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
-  #      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
-  #      CONFLIENT_METRICS_ENABLE: 'false'
-  #      PORT: 9021
-  #    networks:
-  #      - vbo
+    environment:
+      ZOO_MY_ID: 1
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: "512m"
+    restart: unless-stopped
 
   kafka:
     container_name: kafka
@@ -101,63 +135,136 @@ services:
     ports:
       - "9092:9092"
     environment:
-      - ZOOKEEPER_CONNECT=zookeeper:2181
+      ZOOKEEPER_CONNECT: zookeeper:2181
     networks:
       - vbo
+    depends_on:
+      - zookeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: "1g"
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
+  #---------------------------------------------------------------------------
+  # Source Database & CDC Connector
+  #---------------------------------------------------------------------------
   postgres:
     container_name: postgres
     image: quay.io/debezium/example-postgres:3.1
     ports:
-      - "5433:5432"
+      - "5433:5432"  # PostgreSQL port
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
     networks:
       - vbo
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: "1g"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   connect:
     container_name: connect
     image: debezium/connect:2.7.3.Final
     ports:
-      - "8083:8083"
+      - "8083:8083"  # Kafka Connect REST API
     hostname: connect
     depends_on:
       - kafka
       - postgres
     environment:
-      - BOOTSTRAP_SERVERS=kafka:9092
-      - CONNECT_REST_ADVERTISED_HOST_NAME=connect
-      - GROUP_ID=1
-      - CONFIG_STORAGE_TOPIC=my_connect_configs
-      - OFFSET_STORAGE_TOPIC=my_connect_offsets
-      - STATUS_STORAGE_TOPIC=my_connect_statuses
-      - KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
-      - VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
-      - ENABLE_DEBEZIUM_SCRIPTING=true
+      BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      ENABLE_DEBEZIUM_SCRIPTING: true
     networks:
       - vbo
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: "1g"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
-  # Debezium UI
-#  debezium-ui:
-#    container_name: ui
-#    image: debezium/debezium-ui:latest
-#    ports:
-#      - "8085:8080"
-#    depends_on:
-#      - connect
-#    environment:
-#      - KAFKA_CONNECT_URI=http://connect:8083
-#    extra_hosts:
-#      - "localhost:host-gateway"
-#    networks:
-#      - vbo
+  # Uncomment to enable Debezium UI for connector management
+  # debezium-ui:
+  #   container_name: debezium-ui
+  #   image: debezium/debezium-ui:latest
+  #   ports:
+  #     - "8085:8080"
+  #   depends_on:
+  #     - connect
+  #   environment:
+  #     KAFKA_CONNECT_URI: http://connect:8083
+  #   networks:
+  #     - vbo
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: "512m"
+  #   restart: unless-stopped
+
+  # Uncomment to enable Confluent Control Center for Kafka monitoring
+  # control-center:
+  #   image: confluentinc/cp-enterprise-control-center:7.4.0
+  #   hostname: control-center
+  #   container_name: control-center
+  #   depends_on:
+  #     - kafka
+  #   ports:
+  #     - "9021:9021"
+  #   environment:
+  #     CONTROL_CENTER_BOOTSTRAP_SERVERS: kafka:9092
+  #     CONTROL_CENTER_REPLICATION_FACTOR: 1
+  #     CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+  #     CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+  #     CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+  #     CONFLIENT_METRICS_ENABLE: false
+  #     PORT: 9021
+  #   networks:
+  #     - vbo
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1'
+  #         memory: "2g"
+  #   restart: unless-stopped
 
 volumes:
   minio:
+    driver: local
   postgres-db-volume:
-
+    driver: local
 
 networks:
   vbo:
+    driver: bridge

@@ -10,11 +10,9 @@ RUN apt-get update && apt-get install -y wget
 # Download PostgreSQL JDBC Driver
 RUN wget -O /opt/postgresql-42.7.5.jar https://jdbc.postgresql.org/download/postgresql-42.7.5.jar
 
-#Install pyspark 3.4.1
-RUN pip install pyspark==3.4.1
-
 # Set SPARK_CLASSPATH to include PostgreSQL JDBC driver
 ENV SPARK_CLASSPATH="/opt/postgresql-42.7.5.jar"
 
-COPY requirements.txt /tmp/
-RUN pip install -r /tmp/requirements.txt
+# Install Python dependencies
+COPY requirements.txt /opt/spark_client/
+RUN pip install --no-cache-dir -r requirements.txt

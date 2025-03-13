@@ -290,9 +290,9 @@ def process_batch(batch_df, batch_id, key_column_name='id'):
 
     parsed_data = parsed_batch.select(select_cols)
     parsed_data = parsed_data.filter(col("operation").isNotNull())
-    parsed_data.select("operation", 
-                       f"before_{key_column_name}", 
-                       f"after_{key_column_name}").show(truncate=False)
+    # parsed_data.select("operation", 
+    #                    f"before_{key_column_name}", 
+    #                    f"after_{key_column_name}").show(truncate=False)
     
     parsed_data = parsed_data.withColumn(
         "key_value", 
@@ -377,9 +377,9 @@ def process_batch(batch_df, batch_id, key_column_name='id'):
             ).whenMatchedDelete().execute()
     
     # Use this only for debugging purposes
-    # if table_exists:
-    #     final_count = spark.read.format("delta").load(minio_output_path).count()
-    #     print(f"Final data count: {final_count}")
+    if table_exists:
+        final_count = spark.read.format("delta").load(minio_output_path).count()
+        print(f"Final data count: {final_count}")
     
     new_process_time = config_manager.get("processing_config", "process_time")
     if new_process_time != process_time:
@@ -471,7 +471,11 @@ def run_stream():
         # print("Waiting for any in-progress batch to complete before stopping...")
         while batch_in_progress[0]:
             time.sleep(1)
-        query.stop()
+        try:
+            if query.isActive:
+                query.stop()
+        except Exception as e:
+            pass
 
 
 if __name__ == "__main__":
