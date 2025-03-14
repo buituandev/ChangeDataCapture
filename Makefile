@@ -1,23 +1,44 @@
+###############################################################################
+# ChangeDataCapture Project Makefile
+# 
+# This Makefile provides commands to control the CDC environment and access
+# the various admin UIs available in the project.
+###############################################################################
 
-.PHONY: up down minio-ui debezium-ui control-center-ui ui
+.PHONY: help up down ui minio-ui debezium-ui control-center-ui
+
+# ANSI color codes for better terminal output
+BLUE=\033[0;34m
+GREEN=\033[0;32m
+NC=\033[0m # No Color
+
+help:
+	@echo "$(BLUE)Available commands:$(NC)"
+	@echo "  make up               - Start all containers with docker-compose"
+	@echo "  make down             - Stop and remove all containers"
+	@echo "  make ui               - Display URLs for all available UIs"
+	@echo "  make minio-ui         - Display MinIO UI URL"
+	@echo "  make debezium-ui      - Display Debezium UI URL"
+	@echo "  make control-center-ui - Display Control Center UI URL"
 
 up:
-	docker-compose up -d
+	@echo "$(BLUE)Starting all containers...$(NC)"
+	@docker-compose up -d
+	@echo "$(GREEN)All containers started successfully$(NC)"
 
 down:
-	docker-compose down
+	@echo "$(BLUE)Stopping all containers...$(NC)"
+	@docker-compose down
+	@echo "$(GREEN)All containers stopped successfully$(NC)"
 
 minio-ui:
-	@echo "MinIO UI is available at: http://localhost:9000"
-	@echo "Please open the above URL in your browser"
+	@echo "$(BLUE)MinIO UI:$(NC) http://localhost:9000"
 
 debezium-ui:
-	@echo "Debezium Control Center is available at: http://localhost:8085"
-	@echo "Please open the above URL in your browser"
+	@echo "$(BLUE)Debezium Control Center:$(NC) http://localhost:8085"
 
 control-center-ui:
-	@echo "Control Center is available at: http://localhost:9021"
-	@echo "Please open the above URL in your browser"
+	@echo "$(BLUE)Control Center:$(NC) http://localhost:9021"
 
 ui: minio-ui debezium-ui control-center-ui
-	@echo "All UIs are now running."
+	@echo "$(GREEN)All administrative UIs are now accessible via the URLs above$(NC)"

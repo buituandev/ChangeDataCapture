@@ -1,0 +1,67 @@
+def determine_source_type(data_json):
+    """
+    Determine if the Debezium event is from PostgreSQL or MongoDB
+    
+    Args:
+        data_json (str): JSON string containing a Debezium event
+        
+    Returns:
+        str: 'postgres' or 'mongodb'
+    """
+    data = json.loads(data_json)
+    if 'source' in data['payload']:
+        source_info = data['payload']['source'] 
+        if isinstance(source_info, dict):
+            # PostgreSQL events have this format
+            if 'connector' in source_info and source_info['connector'] == 'postgresql':
+                return 'postgres'
+            # MongoDB events have this format
+            if 'connector' in source_info and source_info['connector'] == 'mongodb':
+                return 'mongodb'
+    
+    # If source has a "rs" field, it's likely MongoDB
+    if 'source' in data['payload'] and isinstance(data['payload']['source'], dict) and 'rs' in data['payload']['source']:
+        return 'mongodb'
+    
+    # Default to postgres as a fallback
+    return 'postgres'
+
+def get_schema_info_from_debezium(json_str):
+    """
+    Extract schema information from Debezium event
+    """
+    data = json.loads(json_str)
+    source_type = determine_source_type(json_str)
+    
+    if source_type == 'mongodb':
+        return get_mongodb_schema_info(data)
+    else:
+        return get_postgres_schema_info(data)
+
+def get_mongodb_schema_info(data):
+    """Handle MongoDB specific schema discovery"""
+    # MongoDB has a different structure - implement accordingly
+    field_info = []
+    schema = data['schema']
+    
+    for field in schema['fields']:
+        if field['field'] in ['before', 'after']:
+            if 'fields' in field:
+                field_defs = field['fields']
+                for f in field_defs:
+                    field_info.append({
+                        'name': f['field'],
+                        'type': translate_mongodb_type(f['type']),
+                        'optional': f.get('optional', True)
+                    })
+            break
+    
+    return field_info
+
+def translate_mongodb_type(mongo_type):
+    """Convert MongoDB BSON types to appropriate Spark types"""
+    # Handle MongoDB specific types like NumberLong
+    if isinstance(mongo_type, dict) and '$numberLong' in mongo_type:
+        return 'int64'
+    # Add more type conversions as needed
+    return mongo_type

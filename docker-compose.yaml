@@ -23,15 +23,15 @@ services:
           cpus: '1'
           memory: "2g"
     ports:
-      - "4040:4040"  # Spark Web UI
-      - "7077:7077"  # Spark master port
-      - "8080:8080"  # Spark master web UI
-      - "18080:18080"  # Spark History Server
+      - "4040:4040" # Spark Web UI
+      - "7077:7077" # Spark master port
+      - "8080:8080" # Spark master web UI
+      - "18080:18080" # Spark History Server
     networks:
       - vbo
     command: sh spark-master.sh
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -47,7 +47,7 @@ services:
           cpus: '1'
           memory: "2g"
     ports:
-      - "8081-8089:8081"  # Worker Web UI
+      - "8081-8089:8081" # Worker Web UI
     networks:
       - vbo
     command: sh spark-worker.sh
@@ -57,7 +57,7 @@ services:
 
   spark-client:
     container_name: spark-client
-    build: 
+    build:
       context: ./spark_client
       dockerfile: Dockerfile
     deploy:
@@ -66,8 +66,8 @@ services:
           cpus: '1'
           memory: "2g"
     ports:
-      - "8888:8888"  # Jupyter Notebook
-      - "4041:4040"  # Spark UI for client app
+      - "8888:8888" # Jupyter Notebook
+      - "4041:4040" # Spark UI for client app
     networks:
       - vbo
     volumes:
@@ -88,8 +88,8 @@ services:
     volumes:
       - minio:/data
     ports:
-      - "9000:9000"  # MinIO API
-      - "9001:9001"  # MinIO Console
+      - "9000:9000" # MinIO API
+      - "9001:9001" # MinIO Console
     networks:
       - vbo
     environment:
@@ -97,7 +97,7 @@ services:
       MINIO_SECRET_KEY: "12345678"
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -146,7 +146,7 @@ services:
           cpus: '1'
           memory: "1g"
     healthcheck:
-      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      test: [ "CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -160,7 +160,7 @@ services:
     container_name: postgres
     image: quay.io/debezium/example-postgres:3.1
     ports:
-      - "5433:5432"  # PostgreSQL port
+      - "5433:5432" # PostgreSQL port
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -174,7 +174,7 @@ services:
           cpus: '1'
           memory: "1g"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -184,19 +184,19 @@ services:
     container_name: mongodb
     image: mongo:7.0.2
     ports:
-      - "27017:27017"  # MongoDB port
+      - "27017:27017" # MongoDB port
     volumes:
       - mongodb-data:/data/db
     networks:
       - vbo
-    command: ["--replSet", "docker-rs"]
+    command: [ "--replSet", "docker-rs" ]
     restart: unless-stopped
 
   connect:
     container_name: connect
     image: quay.io/debezium/connect:3.1
     ports:
-      - "8083:8083"  # Kafka Connect REST API
+      - "8083:8083" # Kafka Connect REST API
     hostname: connect
     depends_on:
       - kafka
@@ -219,7 +219,7 @@ services:
           cpus: '1'
           memory: "1g"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8083/connectors" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -246,7 +246,6 @@ services:
           cpus: '0.5'
           memory: "512m"
     restart: unless-stopped
-
   # Uncomment to enable Confluent Control Center for Kafka monitoring
   # control-center:
   #   image: confluentinc/cp-enterprise-control-center:7.4.0
