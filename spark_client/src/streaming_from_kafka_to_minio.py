@@ -13,6 +13,7 @@ with checkpoint management and configurable processing intervals.
 
 import os
 import json
+import argparse
 
 from pyspark.errors import AnalysisException
 from pyspark.sql.functions import from_json, col, max_by, struct, when
@@ -22,8 +23,17 @@ from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
 from config_manager import ConfigManager
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Spark Structured Streaming CDC application')
+    parser.add_argument('--config', type=str, default="/opt/src/config.json",
+                        help='Path to configuration file')
+    return parser.parse_args()
+
+args = parse_args()
+
 # region Spark Configuration
-config_manager = ConfigManager("/opt/src/config.json")
+config_manager = ConfigManager(args.config)
 accessKeyId = config_manager.get("s3_config", "access_key_id")
 secretAccessKey = config_manager.get("s3_config", "secret_access_key")
 minio_endpoint = config_manager.get("s3_config", "endpoint")

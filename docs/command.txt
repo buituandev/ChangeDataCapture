@@ -7,6 +7,7 @@ docker-compose exec kafka /kafka/bin/kafka-console-consumer.sh \
     --from-beginning \
     --property print.key=true \
     --topic mongodb.demo.items
+docker-compose exec kafka /kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --from-beginning --property print.key=true --topic dbserver2.public.customers
 docker exec -it mongodb mongosh
 use demo
 db.items.insertOne(
@@ -15,3 +16,4 @@ db.items.insertOne(
 db.items.insertOne([
     { _id : NumberLong("1005"), first_name : 'Bob', last_name : 'Hopper', email : 'thebob@example.com', unique_id : UUID() }
 ]);
+docker exec -it spark-client bash -c "cd /opt/src && spark-submit --master spark://spark-master:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,io.delta:delta-core_2.12:2.4.0 streaming_from_kafka_to_minio.py --config /opt/src/config.json"
