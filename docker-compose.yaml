@@ -180,6 +180,18 @@ services:
       retries: 5
     restart: unless-stopped
 
+  mongodb:
+    container_name: mongodb
+    image: mongo:7.0.2
+    ports:
+      - "27017:27017"  # MongoDB port
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - vbo
+    command: ["--replSet", "docker-rs"]
+    restart: unless-stopped
+
   connect:
     container_name: connect
     image: quay.io/debezium/connect:3.1
@@ -215,23 +227,25 @@ services:
     restart: unless-stopped
 
   # Uncomment to enable Debezium UI for connector management
-  # debezium-ui:
-  #   container_name: debezium-ui
-  #   image: debezium/debezium-ui:latest
-  #   ports:
-  #     - "8085:8080"
-  #   depends_on:
-  #     - connect
-  #   environment:
-  #     KAFKA_CONNECT_URI: http://connect:8083
-  #   networks:
-  #     - vbo
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: '0.5'
-  #         memory: "512m"
-  #   restart: unless-stopped
+  debezium-ui:
+    container_name: debezium-ui
+    image: debezium/debezium-ui:latest
+    ports:
+      - "8085:8080"
+    depends_on:
+      - connect
+    environment:
+      KAFKA_CONNECT_URI: http://connect:8083
+    extra_hosts:
+      - "localhost:host-gateway"
+    networks:
+      - vbo
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: "512m"
+    restart: unless-stopped
 
   # Uncomment to enable Confluent Control Center for Kafka monitoring
   # control-center:
@@ -263,6 +277,8 @@ volumes:
   minio:
     driver: local
   postgres-db-volume:
+    driver: local
+  mongodb-data:
     driver: local
 
 networks:
