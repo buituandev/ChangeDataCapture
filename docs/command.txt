@@ -1,5 +1,5 @@
-curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json" http://localhost:8083/connectors/ -d @debezium-postgres-connector.json
-curl -i -X POST localhost:8083/connectors -H "Content-Type: application/json" -d @debezium-mongodb-source-connector.json
+curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json" http://localhost:8083/connectors/ -d @debezium_connector_config/debezium-postgres-connector.json
+curl -i -X POST localhost:8083/connectors -H "Content-Type: application/json" -d @debezium_connector_config/debezium-mongodb-source-connector.json
 docker exec -it mongodb mongosh --eval "rs.initiate({_id:'docker-rs', members: [{_id:0, host: 'mongodb'}]})"
 docker exec -it mongodb mongosh --eval "rs.status()"
 docker-compose exec kafka /kafka/bin/kafka-console-consumer.sh \
