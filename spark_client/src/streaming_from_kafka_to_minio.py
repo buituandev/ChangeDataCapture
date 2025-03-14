@@ -55,7 +55,7 @@ is_halfway = False
 existing_data = None
 
 spark = SparkSession.builder \
-    .appName("Spark x MinIO") \
+    .appName(args.config) \
     .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.0,io.delta:delta-core_2.12:2.4.0") \
     .config("spark.hadoop.fs.s3a.access.key", accessKeyId) \
     .config("spark.hadoop.fs.s3a.secret.key", secretAccessKey) \
@@ -65,6 +65,7 @@ spark = SparkSession.builder \
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", str(config_manager.get("s3_config", "ssl_enabled")).lower()) \
     .config("spark.hadoop.fs.s3a.aws.credentials.provider",
             "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
+    .config("spark.cores.max", 1) \
     .getOrCreate()
 spark.sparkContext.setLogLevel('ERROR')
 # endregion
