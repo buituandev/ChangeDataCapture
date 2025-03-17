@@ -2,6 +2,8 @@
 
 The task is to stream data from a PostgreSQL database through Kafka to Minio object storage. A Debezium connector is established on Kafka Connect for capturing operational changes in the data. Spark Streaming is used for real-time data streaming and writing to Minio.
 
+![Architecture of cdc](/assets/Operation.png)
+
 ## Step 1: Create docker-compose.yaml
 
 Services that should be in the container:
