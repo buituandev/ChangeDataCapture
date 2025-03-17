@@ -42,7 +42,6 @@ checkpoint_dir = config_manager.get("delta_config", "checkpoint_dir")
 table = config_manager.get("kafka_config", "topic")
 cache_schema_path = config_manager.get("cache_config", "schema_path")
 cache_field_info_path = config_manager.get("cache_config", "field_info_path")
-cache_sql_history_path = config_manager.get("cache_config", "sql_history_path")
 process_time = config_manager.get("processing_config", "process_time")
 
 # Global variables

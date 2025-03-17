@@ -153,8 +153,7 @@ class ConfigManager:
             },
             "cache_config": {
                 "schema_path": "/opt/src/schema.json",
-                "field_info_path": "/opt/src/field_info.json",
-                "sql_history_path": "/opt/src/sql_history.csv"
+                "field_info_path": "/opt/src/field_info.json"
             },
             "processing_config": {
                 "key_column": "customerId",
