@@ -159,6 +159,9 @@ class ConfigManager:
                 "key_column": "customerId",
                 "process_time": "1 minute",
                 "batch_size": 1000
+            },
+            "database_config": {
+                "type": "postgres",
             }
         }
         

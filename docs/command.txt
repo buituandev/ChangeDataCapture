@@ -16,4 +16,4 @@ db.items.insertOne(
 db.items.insertOne([
     { _id : NumberLong("1005"), first_name : 'Bob', last_name : 'Hopper', email : 'thebob@example.com', unique_id : UUID() }
 ]);
-docker exec -it spark-client bash -c "cd /opt/src && spark-submit --master spark://spark-master:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,io.delta:delta-core_2.12:2.4.0 mongo_stream.py --config /opt/src/mongo_config.json"
+docker exec -it spark-client bash -c "cd /opt/src && spark-submit --master spark://spark-master:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,io.delta:delta-core_2.12:2.4.0 cdc_stream.py --config /opt/src/mongo_config.json"

@@ -2,10 +2,12 @@
 Spark Structured Streaming Application for Change Data Capture (CDC) Processing
 
 Overview:
-This module implements a robust streaming Extract-Transform-Load (ETL) pipeline designed to process Change Data Capture (CDC) events. It leverages Apache Spark Structured Streaming to handle real-time data modifications from source systems and applies them to a target Delta table.
+This module implements a robust streaming Extract-Transform-Load (ETL) pipeline designed to
+process Change Data Capture (CDC) events. It leverages Apache Spark Structured Streaming to
+handle real-time data modifications from source systems and applies them to a target Delta table.
 
 Author: Unknown
-Version: 2.0
+Version: 2.1
 Last Updated: March 16, 2025
 
 Features:
@@ -21,6 +23,7 @@ Features:
 Change Log:
 - v2.0: Added support for MongoDB Debezium format
 - v2.0: Implemented dynamic schema generation for MongoDB
+- v2.1: Raised exceptions for unsupported database types
 
 Architecture:
 1. Input: Consumes CDC events from Kafka topics
@@ -33,6 +36,10 @@ Architecture:
 
 Usage:
 This application is intended for semi-real-time data integration scenarios where source system changes need to be captured and applied to a target data lake or warehouse with minimal latency.
+
+Note:
+This script depends on the ConfigManager class from the config_manager module.
+Ensure that the config_manager.py file is available in the same directory as this script.
 """
 
 import os
@@ -912,6 +919,8 @@ def run_mongodb_stream():
 if __name__ == "__main__":
     if database_type == "postgres":
         run_stream()
-    elif database_type == "mongodb":
+    elif database_type == "mongo":
         run_mongodb_stream()
+    else:
+        raise ValueError(f"Unsupported database type: {database_type}")
 # endregion
