@@ -1,0 +1,27 @@
+[
+    {
+        "name": "_id",
+        "type": "string",
+        "optional": true
+    },
+    {
+        "name": "first_name",
+        "type": "string",
+        "optional": true
+    },
+    {
+        "name": "last_name",
+        "type": "string",
+        "optional": true
+    },
+    {
+        "name": "email",
+        "type": "string",
+        "optional": true
+    },
+    {
+        "name": "unique_id",
+        "type": "string",
+        "optional": true
+    }
+]
