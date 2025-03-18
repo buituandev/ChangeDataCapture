@@ -116,7 +116,7 @@ class ConfigManager:
         """
         required_sections = [
             "s3_config", "delta_config", "kafka_config", 
-            "cache_config", "processing_config"
+            "cache_config", "processing_config", "database_config"
         ]
         
         # Check if all required sections exist
@@ -234,4 +234,4 @@ class ConfigManager:
             return True
         except Exception as e:
             self.logger.error(f"Failed to update configuration: {str(e)}")
-            return False
+            return False 
