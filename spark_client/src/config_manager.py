@@ -9,7 +9,7 @@ import os
 import json
 import time
 import logging
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 
 
 class ConfigError(Exception):

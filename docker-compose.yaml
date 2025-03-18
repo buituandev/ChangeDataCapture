@@ -47,12 +47,18 @@ services:
           cpus: '1'
           memory: "2g"
     ports:
-      - "8081-8089:8081" # Worker Web UI
+      - "8081:8081" # Primary Worker Web UI
     networks:
       - vbo
     command: sh spark-worker.sh
     depends_on:
       - spark-master
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   spark-client:
@@ -182,7 +188,7 @@ services:
 
   mongodb:
     container_name: mongodb
-    image: mongo:7.0.2
+    image: mongo:latest
     ports:
       - "27017:27017" # MongoDB port
     volumes:
@@ -229,7 +235,7 @@ services:
   # Uncomment to enable Debezium UI for connector management
   debezium-ui:
     container_name: debezium-ui
-    image: debezium/debezium-ui:latest
+    image: quay.io/debezium/debezium-ui:2.5
     ports:
       - "8085:8080"
     depends_on:
@@ -246,31 +252,32 @@ services:
           cpus: '0.5'
           memory: "512m"
     restart: unless-stopped
+
   # Uncomment to enable Confluent Control Center for Kafka monitoring
-  # control-center:
-  #   image: confluentinc/cp-enterprise-control-center:7.4.0
-  #   hostname: control-center
-  #   container_name: control-center
-  #   depends_on:
-  #     - kafka
-  #   ports:
-  #     - "9021:9021"
-  #   environment:
-  #     CONTROL_CENTER_BOOTSTRAP_SERVERS: kafka:9092
-  #     CONTROL_CENTER_REPLICATION_FACTOR: 1
-  #     CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
-  #     CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
-  #     CONFLUENT_METRICS_TOPIC_REPLICATION: 1
-  #     CONFLIENT_METRICS_ENABLE: false
-  #     PORT: 9021
-  #   networks:
-  #     - vbo
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: '1'
-  #         memory: "2g"
-  #   restart: unless-stopped
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:latest
+    hostname: control-center
+    container_name: control-center
+    depends_on:
+      - kafka
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: kafka:9092
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+      CONFLIENT_METRICS_ENABLE: false
+      PORT: 9021
+    networks:
+      - vbo
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: "2g"
+    restart: unless-stopped
 
 volumes:
   minio:
