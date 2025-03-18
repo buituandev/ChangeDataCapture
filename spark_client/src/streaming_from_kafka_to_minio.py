@@ -23,12 +23,14 @@ from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
 from config_manager import ConfigManager
 
+
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='Spark Structured Streaming CDC application')
     parser.add_argument('--config', type=str, default="/opt/src/config.json",
                         help='Path to configuration file')
     return parser.parse_args()
+
 
 args = parse_args()
 
@@ -69,6 +71,7 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel('ERROR')
 # endregion
 
+
 # region Dynamic Schema Generation
 def get_spark_type(debezium_type):
     """
@@ -91,6 +94,7 @@ def get_spark_type(debezium_type):
         "decimal": DecimalType(38, 18),
     }
     return type_mapping.get(debezium_type, StringType())
+
 
 def get_schema_info_from_debezium(json_str):
     """
@@ -119,6 +123,7 @@ def get_schema_info_from_debezium(json_str):
 
     return field_info
 
+
 def create_struct_type_from_debezium(field_info):
     """
     Create a Spark StructType from Debezium field information.
@@ -134,6 +139,7 @@ def create_struct_type_from_debezium(field_info):
         spark_type = get_spark_type(field['type'])
         fields.append(StructField(field['name'], spark_type, field['optional']))
     return StructType(fields)
+
 
 def create_dynamic_schema(data_json):
     """
@@ -167,6 +173,7 @@ def create_dynamic_schema(data_json):
     ])
     return schema, data_json, field_info
 
+
 def generate_select_statements(schema, field_info):
     """
     Generate column selection expressions for processing CDC data.
@@ -198,6 +205,7 @@ def generate_select_statements(schema, field_info):
 
     return select_columns, [f['name'] for f in field_info]
 
+
 def format_sql_value(value, data_type):
     """
     Format a value correctly for SQL based on its data type.
@@ -217,6 +225,7 @@ def format_sql_value(value, data_type):
         escaped_value = str(value).replace("'", "''")
         return f"'{escaped_value}'"
 # endregion
+
 
 # region Cache Schema
 def save_cached_schema(schema, field_info):
@@ -262,6 +271,7 @@ def is_cached_schema():
     return os.path.exists(cache_schema_path) and os.path.exists(cache_field_info_path)
 # endregion
 
+
 # region Batch Processing
 def process_batch(batch_df, batch_id, key_column_name='id'):
     """
@@ -305,7 +315,7 @@ def process_batch(batch_df, batch_id, key_column_name='id'):
     #                    f"after_{key_column_name}").show(truncate=False)
     
     parsed_data = parsed_data.withColumn(
-        "key_value", 
+        "key_value",
         when(col("operation") == "d", col(f"before_{key_column_name}"))
         .when(col(f"after_{key_column_name}").isNotNull(), col(f"after_{key_column_name}"))
     )
@@ -313,11 +323,11 @@ def process_batch(batch_df, batch_id, key_column_name='id'):
     aggregated_batch = parsed_data.groupBy("key_value").agg(
         max_by(
             struct(
-                "operation", 
+                "operation",
                 "timestamp",
                 *[col(f"after_{field}") for field in ordered_fields],
                 *[col(f"before_{field}") for field in ordered_fields]
-            ), 
+            ),
             "timestamp"
         ).alias("latest")
     )
@@ -370,7 +380,7 @@ def process_batch(batch_df, batch_id, key_column_name='id'):
                 f"target.{key_column_name} = source.{key_column_name}"
             ).whenMatchedUpdate(
                 condition=None,
-                set={**{field: f"source.{field}" for field in ordered_fields}, 
+                set={**{field: f"source.{field}" for field in ordered_fields},
                      "timestamp": "source.timestamp"}
             ).whenNotMatchedInsertAll().execute()
         
@@ -397,6 +407,7 @@ def process_batch(batch_df, batch_id, key_column_name='id'):
         # print(f"Process time config changed from {process_time} to {new_process_time}")
         process_time = new_process_time
 # endregion
+
 
 # region Application
 def run_stream():

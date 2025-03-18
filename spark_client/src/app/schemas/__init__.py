@@ -1,0 +1,1 @@
+"""Schema management for CDC events.""" 
