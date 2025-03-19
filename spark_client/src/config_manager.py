@@ -162,6 +162,7 @@ class ConfigManager:
             },
             "database_config": {
                 "type": "postgres",
+                "columns_to_save" : "all"
             }
         }
         

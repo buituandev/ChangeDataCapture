@@ -47,7 +47,7 @@ services:
           cpus: '1'
           memory: "2g"
     ports:
-      - "8081:8081" # Primary Worker Web UI
+      - "8081-8089:8081"  # Worker Web UI
     networks:
       - vbo
     command: sh spark-worker.sh
@@ -207,6 +207,7 @@ services:
     depends_on:
       - kafka
       - postgres
+      - mongodb
     environment:
       BOOTSTRAP_SERVERS: kafka:9092
       CONNECT_REST_ADVERTISED_HOST_NAME: connect

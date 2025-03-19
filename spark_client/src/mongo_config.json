@@ -25,6 +25,7 @@
     "batch_size": 1000
   },
   "database_config": {
-    "type": "mongo"
+    "type": "mongo",
+    "columns_to_save" : "all"
   }
 }
