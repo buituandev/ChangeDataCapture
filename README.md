@@ -447,10 +447,10 @@ The streaming application processes events with the following schema:
 
 <div align="center">
 <p>
-  <a href="https://github.com/yourusername/cdc-pipeline/issues">Report Bug</a> •
-  <a href="https://github.com/yourusername/cdc-pipeline/issues">Request Feature</a>
+  <a href="#">Report Bug</a> •
+  <a href="#">Request Feature</a>
 </p>
 
-<p>© 2025 Your Organization | Licensed under MIT</p>
+<p>© 2025 | Licensed under MIT</p>
 
 </div>
