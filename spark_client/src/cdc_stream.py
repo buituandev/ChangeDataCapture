@@ -974,7 +974,6 @@ def run_stream():
     try:
         logger.info("CDC stream processing started, awaiting data...")
         while True:
-            import time
             time.sleep(1)
             
             if restart_required[0] and not batch_in_progress[0]:
@@ -1062,7 +1061,6 @@ def run_mongodb_stream():
     try:
         logger.info("MongoDB CDC stream processing started, awaiting data...")
         while True:
-            import time
             time.sleep(1)
             
             if restart_required[0] and not batch_in_progress[0]:
