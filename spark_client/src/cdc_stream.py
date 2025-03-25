@@ -183,13 +183,18 @@ def get_spark_type(debezium_type):
 
 def get_schema_info_from_debezium(json_str):
     """
-    Convert Debezium data type to corresponding Spark SQL type.
+    Extract field information from a Debezium JSON schema.
+    This function parses a Debezium JSON message and extracts the field definitions
+    from either the 'before' or 'after' section of the schema.
     
     Args:
-        debezium_type (str): The Debezium data type name
+        json_str (str): A JSON string containing Debezium schema information
         
     Returns:
-        pyspark.sql.types.DataType: The corresponding Spark SQL data type
+        list: A list of dictionaries containing field information with keys:
+            - 'name': The field name
+            - 'type': The field type
+            - 'optional': Boolean indicating if the field is optional (defaults to True)
     """
     data = json.loads(json_str)
     schema = data['schema']

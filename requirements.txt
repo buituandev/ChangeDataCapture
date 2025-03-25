@@ -1,6 +1,5 @@
 sqlalchemy
 pyspark==3.4.1
 delta-spark
-croniter
 faker
 psycopg2
